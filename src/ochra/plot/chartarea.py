@@ -16,7 +16,7 @@ from ochra.style.stroke import Stroke
 
 
 @dataclass
-class ChartArea(Generic[X, Y]):
+class ChartArea(Canvas, Generic[X, Y]):
     x_axis: Axis
     y_axis: Axis
     plots: Collection[Plot[X, Y]]
@@ -127,7 +127,7 @@ class ChartArea(Generic[X, Y]):
             ]
         )
 
-    def plot(self) -> Canvas:
+    def __post_init__(self):
         X = self.x_axis
         Y = self.y_axis
         rect = AxisAlignedRectangle(
@@ -139,7 +139,7 @@ class ChartArea(Generic[X, Y]):
         x_axis = self.draw_x_axis()
         y_axis = self.draw_y_axis()
         grid = self.draw_grid()
-        return Canvas(
+        super().__init__(
             [
                 rect,
                 grid,

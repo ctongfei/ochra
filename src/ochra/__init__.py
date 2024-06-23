@@ -14,6 +14,6 @@ from .canvas import Canvas, EmbeddedCanvas
 
 from .rendering.svg import to_svg, to_svg_file
 
-from . import markers
+from .style import markers
 from . import style
 from . import plot

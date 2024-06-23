@@ -3,10 +3,9 @@ import math
 
 import numpy as np
 
-from ochra.element import Element
 from ochra.parameterizable import Parameterizable1
 from ochra.plane import Point, Vector, Transformation, PointI
-from ochra.util.functions import logit, lerp_point
+from ochra.util.functions import logit
 from ochra.style.stroke import Stroke
 from ochra.util.property_utils import classproperty
 
@@ -14,7 +13,7 @@ from ochra.util.property_utils import classproperty
 class Line(Parameterizable1):
 
     def __init__(self,
-                 coef: Union[np.ndarray, Tuple[float, float, float]],
+                 coef: np.ndarray | Tuple[float, float, float],
                  stroke: Stroke = Stroke(),
                  **kwargs
                  ):

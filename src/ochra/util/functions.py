@@ -33,3 +33,7 @@ def dist(a: Point, b: Point) -> float:
 
 def rad_to_deg(rad: float) -> float:
     return rad * 360 / math.tau
+
+
+def deg_to_rad(deg: float) -> float:
+    return deg * math.tau / 360

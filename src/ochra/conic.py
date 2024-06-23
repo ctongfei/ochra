@@ -1,5 +1,5 @@
 import math
-from typing import Union, Tuple
+from typing import Tuple
 import numpy as np
 
 from ochra.element import Element
@@ -15,7 +15,7 @@ class Conic(Parameterizable1):
     Represents any conic section in the plane.
     """
 
-    def __init__(self, coef: Union[np.ndarray, Tuple[float, float, float, float, float, float]], stroke: Stroke = Stroke()):
+    def __init__(self, coef: np.ndarray | Tuple[float, float, float, float, float, float], stroke: Stroke = Stroke()):
         if isinstance(coef, tuple):
             a, b, c, d, e, f = coef
             coef = np.array([

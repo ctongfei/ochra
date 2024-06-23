@@ -38,7 +38,7 @@ def stroke_to_css(s: Stroke) -> Dict[str, str]:
     dash = {} if s.dash is None else dash_to_css(s.dash)
     line_cap = {} if s.line_cap is None else {"stroke-linecap": s.line_cap.value}
     line_join = {} if s.line_join is None else {"stroke-linejoin": s.line_join.value}
-    miter_limit = {} if s.miter_limit is None else {"stroke-miterlimit": str(s.miter_limit)}
+    miter_limit = {} if s.miter_limit is None else {"stroke-miterlimit": f2s(s.miter_limit)}
     opacity = {} if s.opacity is None else {"stroke-opacity": f2s(s.opacity)}
     width = {} if s.width is None else {"stroke-width": f2s(s.width)}
     return {**stroke, **dash, **width, **line_cap, **line_join, **miter_limit, **opacity, **width}

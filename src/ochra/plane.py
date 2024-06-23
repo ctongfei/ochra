@@ -1,7 +1,7 @@
 import math
 from dataclasses import dataclass
 import numpy as np
-from typing import Union, Tuple, TypeAlias
+from typing import Tuple, TypeAlias
 
 from ochra.util.property_utils import classproperty
 
@@ -43,7 +43,7 @@ class Point:
     def __add__(self, v: Vector):
         return Point(self.x + v.x, self.y + v.y)
 
-    def __sub__(self, p: Union['Point', Vector]) -> Union[Vector, 'Point']:
+    def __sub__(self, p: 'Point | Vector') -> 'Vector | Point':
         if isinstance(p, Point):
             return Vector(self.x - p.x, self.y - p.y)
         return Point(self.x - p.x, self.y - p.y)
@@ -59,13 +59,17 @@ class Point:
         return cls(0, 0)
 
     @classmethod
+    def polar(cls, r: float, θ: float):
+        return cls(r * math.cos(θ), r * math.sin(θ))
+
+    @classmethod
     def mk(cls, p: 'PointI'):
         if isinstance(p, Point):
             return p
         return cls(p[0], p[1])
 
 
-PointI: TypeAlias = Union[Point, Tuple[float, float]]
+PointI: TypeAlias = Point | Tuple[float, float]
 
 
 class Transformation:

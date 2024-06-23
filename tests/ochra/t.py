@@ -11,10 +11,10 @@ from ochra.style.palette import ios
 
 data_series = [
     [
-        (x, math.sin(x + i * 0.3) * (16 - i) / 4 + 5)
+        (x, math.sin(x + i * 0.4) * (16 - i) / 4 + 5)
         for x in np.linspace(0, 10, 128)
     ]
-    for i in range(16)
+    for i in range(12)
 ]
 
 plot = oxp.ChartArea(
@@ -28,16 +28,10 @@ plot = oxp.ChartArea(
     grid_stroke=oxs.Stroke(ios.gray5, width=1),
 )
 
-text = ox.Text(
-            "Hello, World!",
-            left_bottom=(50, 50),
-        )
-
 c = ox.Canvas(
-    viewport=ox.AxisAlignedRectangle(ox.Point.origin, (400, 400)),
+    viewport=ox.AxisAlignedRectangle((0, 0), (400, 400)),
     elements=[
-        ox.EmbeddedCanvas(plot.plot(), left_bottom=(50, 50)),
-        text
+        ox.EmbeddedCanvas(plot, left_bottom=(50, 50)),
     ]
 )
 

@@ -24,15 +24,15 @@ class Marker:
                  elements: Collection[Element],
                  viewport: "AxisAlignedRectangle",
                  units: MarkerUnits = MarkerUnits.user_space_on_use,
-                 orientation: Union[MarkerOrientation, float] = MarkerOrientation.auto,
+                 orientation: MarkerOrientation | float = MarkerOrientation.auto,
                  name: Optional[str] = None
                  ):
         self.elements = elements
         self.viewport = viewport
         self.units = units
         self.orientation = orientation
-        self.name = name if name is not None else hex(id(self))
-        Marker.all_named_markers[name] = self
+        self.name = name if name is not None else hex(id(self))[2:]
+        Marker.all_named_markers[self.name] = self
 
     @property
     def canvas(self) -> "Canvas":

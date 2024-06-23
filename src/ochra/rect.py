@@ -13,8 +13,6 @@ class AxisAlignedRectangle(Polygon, Parameterizable1):
         top_right = Point.mk(top_right)
         self.width = top_right.x - left_bottom.x
         self.height = top_right.y - left_bottom.y
-        assert self.width > 0
-        assert self.height > 0
         vertices = [
             left_bottom,
             left_bottom + Vector(self.width, 0),
