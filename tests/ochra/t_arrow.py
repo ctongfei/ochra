@@ -30,7 +30,7 @@ m2 = ox.Mark(arrows[1].p1, marker=ox.Marker.polygon(4, angle=math.radians(0)))
 
 canvas = ox.Canvas(
     viewport=rect,
-    elements=[rect, m, m2, *arrows]
+    elements=[rect, *arrows, m, m2]
 )
 
 ox.to_svg_file(canvas, "test.svg")

@@ -97,10 +97,10 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
     elif isinstance(e, Mark):
         return ET.Element(
             "use",
-            x=f2s(e.point.x),
-            y=f2s(e.point.y),
+            x=f2s(e.point.x + e.marker.viewport.left_bottom.x),
+            y=f2s(e.point.y + e.marker.viewport.left_bottom.y),
             href=f"#symbol-{e.marker.name}",
-        )
+        )  # conform to SVG 1.1 standard, can't use refX, refY
     elif isinstance(e, Circle):
         return ET.Element(
             "circle",
@@ -178,11 +178,14 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
     symbol = ET.Element(
         "symbol",
         id=f"symbol-{m.name}",
-        viewBox=f"{v.left_bottom.x} {-v.left_bottom.y - v.height} {v.width} {v.height}",
+        viewBox=f"0 0 {v.width} {v.height}",
         width=str(v.width),
         height=str(v.height)
     )
-    symbol.extend([element_to_svg(c, e) for e in m.elements])
+    symbol.extend([
+        element_to_svg(c, e.translate(-v.left_bottom.x, -v.left_bottom.y))
+        for e in m.elements
+    ])  # Conform to SVG 1.1 standard, can't use refX, refY -- so have to move the elements
     return symbol
 
 
