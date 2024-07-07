@@ -7,7 +7,6 @@ from ochra.rect import AxisAlignedRectangle
 from ochra.style.stroke import LineJoin, Stroke
 from ochra.style.fill import Fill
 from ochra.marker import Marker
-from ochra.util.functions import deg_to_rad
 
 
 class Arrowhead:
@@ -33,7 +32,7 @@ def _arrow_triangle_base(size: float, angle: float, **kwargs):
     ).translate(-size, 0)  # center at arrow tip
 
 
-def arrow_triangle(size: float = 5.0, angle: float = deg_to_rad(30), **kwargs):
+def arrow_triangle(size: float = 5.0, angle: float = math.degrees(30), **kwargs):
     stroke = replace(kwargs.pop("stroke", Stroke()))
     stroke.line_join = LineJoin.miter
     # https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke-miterlimit
@@ -46,8 +45,8 @@ def arrow_triangle(size: float = 5.0, angle: float = deg_to_rad(30), **kwargs):
     )
 
 
-def arrow_stealth(size: float = 5.0, angle: float = deg_to_rad(30), **kwargs):
-    stroke = replace(kwargs.pop("stroke", Stroke()))
+def arrow_stealth(size: float = 5.0, angle: float = math.degrees(30), **kwargs):
+    stroke = replace(kwargs.pop("stroke", Stroke(width=1)))
     fill = replace(kwargs.pop("fill", Fill()))
     stroke.line_join = LineJoin.miter
     # https://developer.mozilla.org/en-US/docs/Web/SVG/Attribute/stroke-miterlimit
@@ -71,7 +70,7 @@ def arrow_stealth(size: float = 5.0, angle: float = deg_to_rad(30), **kwargs):
     )
 
 
-def arrow_line(size: float = 5.0, angle: float = deg_to_rad(30), **kwargs):
+def arrow_line(size: float = 5.0, angle: float = math.degrees(30), **kwargs):
     triangle = _arrow_triangle_base(size, angle, **kwargs)
     stroke = replace(kwargs.pop("stroke", Stroke()))
     stroke.line_join = LineJoin.miter

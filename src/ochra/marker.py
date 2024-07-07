@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Collection, Optional, Union, Dict
+from typing import Collection, Optional, Dict
 
 from ochra.element import Element
-from ochra.style import Fill
 
 
 class MarkerOrientation(Enum):
@@ -19,6 +18,7 @@ class MarkerUnits(Enum):
 class Marker:
 
     all_named_markers: Dict[str, 'Marker'] = {}
+    all_named_symbols: Dict[str, 'Marker'] = {}
 
     def __init__(self,
                  elements: Collection[Element],
@@ -39,9 +39,28 @@ class Marker:
         from ochra.canvas import Canvas
         return Canvas(self.elements, self.viewport)
 
+    @classmethod
+    def circle(cls, size: float = 4.0, **kwargs):
+        from ochra.conic import Circle
+        from ochra.rect import AxisAlignedRectangle
+        return cls(
+            [Circle(radius=size, **kwargs)],
+            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
+        )
+
+    @classmethod
+    def polygon(cls, n: int, size: float = 5.0, angle: float = 0, **kwargs):
+        from ochra.poly import Polygon
+        from ochra.rect import AxisAlignedRectangle
+        return cls(
+            [Polygon.regular(n, circumradius=size, **kwargs).rotate(angle)],
+            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
+        )
+
 
 @dataclass
 class MarkerConfig:
     start: Optional[Marker] = None
     mid: Optional[Marker] = None
     end: Optional[Marker] = None
+

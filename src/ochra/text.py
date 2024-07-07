@@ -12,9 +12,9 @@ class Text(Element):
         self.text = text
         self.left_bottom = Point.mk(left_bottom)
         self.font = font
+        self.bbox = self._get_bounding_box()
 
-    @property
-    def bounding_box(self) -> 'AxisAlignedRectangle':
+    def _get_bounding_box(self) -> 'AxisAlignedRectangle':
         import cairo
         from ochra.util.cairo_utils import style_to_cairo, weight_to_cairo
         surface = cairo.SVGSurface(
@@ -33,22 +33,30 @@ class Text(Element):
 
     @property
     def center(self) -> Point:
-        bbox = self.bounding_box
+        bbox = self.bbox
         return bbox.center
+
+    @property
+    def height(self) -> float:
+        return self.bbox.height
+
+    @property
+    def width(self) -> float:
+        return self.bbox.width
 
     @classmethod
     def centered(cls, text: str, center: Point, font: Font = Font()) -> 'Text':
-        bbox = Text(text, Point.origin, font).bounding_box
+        bbox = Text(text, Point.origin, font).bbox
         return cls(text, center - bbox.center.as_vector(), font)
 
     @classmethod
     def top_centered(cls, text: str, top_center: Point, font: Font = Font()) -> 'Text':
-        bbox = Text(text, Point.origin, font).bounding_box
+        bbox = Text(text, Point.origin, font).bbox
         return cls(text, top_center - bbox.top_center.as_vector(), font)
 
     @classmethod
     def right_centered(cls, text: str, right_center: Point, font: Font = Font()) -> 'Text':
-        bbox = Text(text, Point.origin, font).bounding_box
+        bbox = Text(text, Point.origin, font).bbox
         return cls(text, right_center - bbox.right_center.as_vector(), font)
 
     def transform(self, f: Transformation) -> 'Element':

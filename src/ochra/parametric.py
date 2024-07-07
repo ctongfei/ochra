@@ -1,4 +1,3 @@
-from abc import ABC
 from typing import Sequence, Tuple, Optional
 import bisect
 import numpy as np
@@ -8,19 +7,16 @@ from ochra.plane import Point, Transformation
 from ochra.group import Group
 
 
-class Parameterizable0(ABC):
-
-    def at(self) -> Point:
-        raise NotImplementedError
-
-
-class Parameterizable1(Element):
+class Parametric(Element):
+    """
+    Represents any shape whose points can be parameterized by a single parameter `t` in [0, 1].
+    """
 
     @property
     def pieces(self) -> Sequence[Tuple[float, float]]:
         """
         Returns the sequence of continuous pieces of the parameterization.
-        Defaults to a single piece from 0 to 1, which says that the element is continuous.
+        Defaults to a single piece from 0 to 1, which says that the whole element is continuous.
         Should be overridden if not continuous, e.g. in the case of the two branches of a hyperbola.
         """
         return [(0.0, 1.0)]
@@ -55,9 +51,16 @@ class Parameterizable1(Element):
         else:
             return Group(pls)
 
+    @staticmethod
+    def join(*shapes: 'Parametric') -> 'Element':
+        """
+        Joins multiple shapes into a single element.
+        """
+        return Joined(shapes)
 
-class Joined(Group, Parameterizable1):
-    def __init__(self, shapes: Sequence[Parameterizable1]):
+
+class Joined(Group, Parametric):
+    def __init__(self, shapes: Sequence[Parametric]):
         super().__init__(shapes)
         self.shapes = shapes
 

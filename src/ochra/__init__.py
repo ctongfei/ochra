@@ -5,7 +5,7 @@ from .rect import AxisAlignedRectangle
 from .line import Line, HorizontalLine, VerticalLine
 from .segment import LineSegment
 from .conic import Conic, Circle, Ellipse
-from .dot import Dot
+from .mark import Mark
 from .graph import FunctionGraph
 from .text import Text
 from .poly import Polygon, Polyline

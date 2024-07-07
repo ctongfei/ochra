@@ -3,12 +3,12 @@ from typing import Dict
 
 from ochra import Transformation
 from ochra.canvas import Canvas, EmbeddedCanvas
-from ochra.dot import Dot
+from ochra.mark import Mark
 from ochra.group import Group
 from ochra.conic import Ellipse, Circle, Arc
 from ochra.element import Element, AnyTransformed
 from ochra.marker import MarkerConfig, Marker
-from ochra.parameterizable import Parameterizable1
+from ochra.parametric import Parametric
 from ochra.poly import Polyline, Polygon
 from ochra.segment import LineSegment
 from ochra.text import Text
@@ -56,7 +56,7 @@ def fill_to_css(f: Fill) -> Dict[str, str]:
 def font_to_css(font: Font) -> Dict[str, str]:
     family = {"font-family": font.family}
     size = {} if font.size is None else {"font-size": str(font.size)}
-    weight = {} if font.weight is None else {"font-weight": font.weight}
+    weight = {} if font.weight is None else {"font-weight": f2s(font.weight.weight)}
     style = {} if font.style is None else {"font-style": font.style}
     return {**family, **size, **weight, **style}
 
@@ -94,14 +94,12 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         )
         t.text = e.text
         return t
-    elif isinstance(e, Dot):
+    elif isinstance(e, Mark):
         return ET.Element(
-            "circle",
-            cx=f2s(e.point.x),
-            cy=f2s(e.point.y),
-            r=f2s(1 if e.stroke.width is None else e.stroke.width / 2),
-            **stroke_to_css(e.stroke),
-            **fill_to_css(Fill(color=e.stroke.color)),
+            "use",
+            x=f2s(e.point.x),
+            y=f2s(e.point.y),
+            href=f"#symbol-{e.marker.name}",
         )
     elif isinstance(e, Circle):
         return ET.Element(
@@ -134,7 +132,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             x2=f2s(e.p1.x),
             y2=f2s(e.p1.y),
             **stroke_to_css(e.stroke),
-            **marker_config_to_css(e.markers),
+            **marker_config_to_css(MarkerConfig(e.marker_start, None, e.marker_end)),
         )
     elif isinstance(e, Polyline):
         return ET.Element(
@@ -142,7 +140,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.vertices),
             fill="none",
             **stroke_to_css(e.stroke),
-            **marker_config_to_css(e.markers),
+            **marker_config_to_css(MarkerConfig(e.marker_start, e.marker_mid, e.marker_end)),
         )
     elif isinstance(e, Polygon):
         return ET.Element(
@@ -150,9 +148,9 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.vertices),
             **stroke_to_css(e.stroke),
             **fill_to_css(e.fill),
-            **marker_config_to_css(e.markers),
+            **marker_config_to_css(MarkerConfig(None, e.marker, None)),
         )
-    elif isinstance(e, Parameterizable1):
+    elif isinstance(e, Parametric):
         return element_to_svg(c, e.approx_as_polyline())
     else:
         raise NotImplementedError(f"Unsupported element type: {type(e)}")
@@ -175,6 +173,19 @@ def marker_to_svg_def(c: Canvas, m: Marker) -> ET.Element:
     return marker
 
 
+def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
+    v = m.viewport
+    symbol = ET.Element(
+        "symbol",
+        id=f"symbol-{m.name}",
+        viewBox=f"{v.left_bottom.x} {-v.left_bottom.y - v.height} {v.width} {v.height}",
+        width=str(v.width),
+        height=str(v.height)
+    )
+    symbol.extend([element_to_svg(c, e) for e in m.elements])
+    return symbol
+
+
 def to_svg(c: Canvas) -> ET.Element:
     all = [
         element_to_svg(c, e.scale(1, -1))
@@ -183,6 +194,10 @@ def to_svg(c: Canvas) -> ET.Element:
     all_markers = [
         marker_to_svg_def(c, m)
         for m in Marker.all_named_markers.values()
+    ]
+    all_symbols = [
+        marker_to_svg_symbol(c, m)
+        for m in Marker.all_named_symbols.values()
     ]
     root = ET.Element(
         "svg",
@@ -193,6 +208,7 @@ def to_svg(c: Canvas) -> ET.Element:
     )
     defs = ET.Element("defs")
     defs.extend(all_markers)
+    defs.extend(all_symbols)
     root.append(defs)
     root.extend(all)
     return root

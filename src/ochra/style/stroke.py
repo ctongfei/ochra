@@ -44,3 +44,4 @@ class Stroke:
     miter_limit: Optional[float] = None
     opacity: Optional[float] = None
     width: Optional[float] = None
+    

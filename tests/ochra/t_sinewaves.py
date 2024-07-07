@@ -18,10 +18,10 @@ data_series = [
 ]
 
 plot = oxp.ChartArea(
-    x_axis=oxp.Axis("x", 0, 10, scale=30),
-    y_axis=oxp.Axis("y", 0, 10, scale=30),
+    x_axis=oxp.ContinuousAxis("x", (0, 10), scale=30),
+    y_axis=oxp.ContinuousAxis("y", (0, 10), scale=30),
     plots=[
-        oxp.LinePlot(data, stroke=Stroke(color, width=2, line_cap=oxs.LineCap.round))
+        oxp.ScatterPlot(data, marker=ox.Marker.circle(5))
         for data, color in zip(data_series, ios)
     ],
     background=oxs.Fill(ios.gray6),

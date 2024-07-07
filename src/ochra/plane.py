@@ -30,6 +30,13 @@ class Vector:
     def __abs__(self) -> float:
         return math.hypot(self.x, self.y)
 
+    @classmethod
+    def mk(cls, v: 'VectorI'):
+        if isinstance(v, Vector):
+            return v
+        else:
+            return cls(v[0], v[1])
+
 
 @dataclass
 class Point:
@@ -70,6 +77,18 @@ class Point:
 
 
 PointI: TypeAlias = Point | Tuple[float, float]
+VectorI: TypeAlias = Vector | Tuple[float, float]
+LineI: TypeAlias = Tuple[float, float, float]  # ax + by + c = 0
+
+
+@dataclass
+class ProjPoint:
+    x: float
+    y: float
+    z: float
+
+    def to_point(self):
+        return Point(self.x / self.z, self.y / self.z)
 
 
 class Transformation:
@@ -91,6 +110,7 @@ class Transformation:
 
     def __call__(self, point: Point):
         x, y, w = self.matrix @ np.array([point.x, point.y, 1])
+        # TODO: may result in an infinity-point on the affine plane
         return Point(x / w, y / w)
 
     def inverse(self):
@@ -102,7 +122,8 @@ class Transformation:
         return cls(np.eye(3))
 
     @classmethod
-    def translate(cls, d: Vector):
+    def translate(cls, d: VectorI):
+        d = Vector.mk(d)
         return Transformation(np.array([
             [1, 0, d.x],
             [0, 1, d.y],
@@ -112,20 +133,39 @@ class Transformation:
     @classmethod
     def rotate(cls, θ: float, center: Point = Point.origin):
         c, s = np.cos(θ), np.sin(θ)
-        r = cls(np.array([
+        rot = cls(np.array([
             [c, -s, 0],
             [s, c, 0],
             [0, 0, 1]
         ]))
         if center == Point.origin:
-            return r
+            return rot
         else:
-            return cls.translate(center.as_vector()) @ r @ cls.translate(-center.as_vector())
+            v = center.as_vector()
+            return cls.translate(v) @ rot @ cls.translate(-v)
 
     @classmethod
-    def scale(cls, s: Vector):
-        return cls(np.array([
+    def scale(cls, s: VectorI, center: Point = Point.origin):
+        s = Vector.mk(s)
+        sc = cls(np.array([
             [s.x, 0, 0],
             [0, s.y, 0],
             [0, 0, 1]
         ]))
+        if center == Point.origin:
+            return sc
+        else:
+            v = center.as_vector()
+            return cls.translate(v) @ sc @ cls.translate(-v)
+
+    @classmethod
+    def reflect(cls, line: LineI):
+        a, b, c = line
+        d = math.hypot(a, b)
+        a, b, c = a / d, b / d, c / d
+        refl = cls(np.array([
+            [1 - 2 * a ** 2, -2 * a * b, -2 * a * c],
+            [-2 * a * b, 1 - 2 * b ** 2, -2 * b * c],
+            [0, 0, 1]
+        ]))
+        return refl

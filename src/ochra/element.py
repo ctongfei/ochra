@@ -1,6 +1,6 @@
 from abc import ABC
 
-from ochra.plane import Transformation, Point, Vector, PointI
+from ochra.plane import Transformation, Point, Vector, PointI, LineI
 
 
 class Element(ABC):
@@ -8,12 +8,12 @@ class Element(ABC):
     Base class for all drawable elements.
     """
 
-    # TODO: add transform_text option
     def transform(self, f: Transformation) -> 'Element':
         """
-        Transform this element using the given transformation.
-        :param f: The given transform.
-        :return:
+        Transforms this element using the given transformation.
+        Should be overridden by subclasses if possible.
+        :param f: The given transformation.
+        :return: A new element where every point is transformed.
         """
         return AnyTransformed(self, f)  # fallback
 
@@ -25,6 +25,9 @@ class Element(ABC):
 
     def scale(self, sx: float, sy: float) -> 'Element':
         return self.transform(Transformation.scale(Vector(sx, sy)))
+
+    def reflect(self, axis: LineI) -> 'Element':
+        return self.transform(Transformation.reflect(axis))
 
 
 class AnyTransformed(Element):

@@ -7,10 +7,14 @@ from ochra.element import Element
 from ochra.rect import AxisAlignedRectangle
 
 
-@dataclass
 class Canvas(Group):
-    elements: Collection[Element]
-    viewport: AxisAlignedRectangle
+
+    def __init__(self,
+                 elements: Collection[Element],
+                 viewport: AxisAlignedRectangle
+                 ):
+        self.elements = elements
+        self.viewport = viewport
 
 
 @dataclass(init=False)
@@ -24,5 +28,3 @@ class EmbeddedCanvas(Group):
         super().__init__(elements=[
             canvas.translate(self.left_bottom.x, self.left_bottom.y)
         ])
-
-

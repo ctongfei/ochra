@@ -31,3 +31,9 @@ class Font:
     style: Optional[FontStyle] = None
     variant: Optional[str] = None  # TODO: full CSS support
     weight: Optional[FontWeight] = None
+
+    def scale(self, s: float):
+        return Font(self.family, self.size * s, self.size_adjust, self.stretch, self.style, self.variant, self.weight)
+
+    def bolded(self):
+        return Font(self.family, self.size, self.size_adjust, self.stretch, self.style, self.variant, FontWeight.bold())

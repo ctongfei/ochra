@@ -1,25 +1,28 @@
 import math
 from typing import Sequence, Optional
 
-from ochra.element import Element
-from ochra.marker import MarkerConfig
-from ochra.parameterizable import Parameterizable1, Joined
+from ochra.marker import Marker
+from ochra.parametric import Parametric, Joined
 from ochra.plane import Point, Transformation, PointI
 from ochra.segment import LineSegment
 from ochra.style.stroke import Stroke
 from ochra.style.fill import Fill
 
 
-class Polyline(Parameterizable1):
+class Polyline(Parametric):
 
     def __init__(self,
                  vertices: Sequence[PointI],
                  stroke: Stroke = Stroke(),
-                 markers: MarkerConfig = MarkerConfig()
+                 marker_start: Optional[Marker] = None,
+                 marker_mid: Optional[Marker] = None,
+                 marker_end: Optional[Marker] = None,
                  ):
         self.vertices = [Point.mk(v) for v in vertices]
         self.stroke = stroke
-        self.markers = markers
+        self.marker_start = marker_start
+        self.marker_mid = marker_mid
+        self.marker_end = marker_end
 
     @property
     def num_vertices(self):
@@ -41,21 +44,27 @@ class Polyline(Parameterizable1):
         return self.edges[i].at(t0)
 
     def transform(self, f: Transformation) -> 'Polyline':
-        return Polyline([f(v) for v in self.vertices], stroke=self.stroke, markers=self.markers)
+        return Polyline(
+            [f(v) for v in self.vertices],
+            stroke=self.stroke,
+            marker_start=self.marker_start,
+            marker_mid=self.marker_mid,
+            marker_end=self.marker_end
+        )
 
 
-class Polygon(Parameterizable1):
+class Polygon(Parametric):
 
     def __init__(self,
                  vertices: Sequence[PointI],
                  stroke: Stroke = Stroke(),
                  fill: Fill = Fill(),
-                 markers: MarkerConfig = MarkerConfig(),
+                 marker: Optional[Marker] = None,
                  ):
         self.vertices = [Point.mk(v) for v in vertices]
         self.stroke = stroke
         self.fill = fill
-        self.markers = markers
+        self.marker = marker
 
     @property
     def num_vertices(self):
@@ -77,7 +86,7 @@ class Polygon(Parameterizable1):
         return self.edges[i].at(t0)
 
     def transform(self, f: Transformation) -> 'Polygon':
-        return Polygon([f(v) for v in self.vertices], self.stroke, self.fill, self.markers)
+        return Polygon([f(v) for v in self.vertices], self.stroke, self.fill, self.marker)
 
     @classmethod
     def regular(cls,
@@ -88,6 +97,15 @@ class Polygon(Parameterizable1):
                 apothem: Optional[float] = None,
                 **kwargs
                 ):
+        """
+        Draws a regular convex polygon with n vertices and n edges.
+        :param n: The number of vertices.
+        :param circumradius: The radius of the circumcircle.
+        :param side_length: Length of each side.
+        :param apothem: Length of the center to an side edge.
+        :param kwargs: Style parameters.
+        :return:
+        """
         circumradius = _get_circumradius(n, circumradius, side_length, apothem)
         return cls(
             [

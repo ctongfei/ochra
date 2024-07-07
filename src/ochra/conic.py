@@ -3,14 +3,14 @@ from typing import Tuple
 import numpy as np
 
 from ochra.element import Element
-from ochra.parameterizable import Parameterizable1
+from ochra.parametric import Parametric
 from ochra.plane import Point, Transformation, PointI
 from ochra.style import Fill
 from ochra.style.stroke import Stroke
 from ochra.util.functions import lerp_point, dist, lerp
 
 
-class Conic(Parameterizable1):
+class Conic(Parametric):
     """
     Represents any conic section in the plane.
     """
@@ -52,7 +52,7 @@ class Conic(Parameterizable1):
                 pass
 
 
-class Ellipse(Conic, Parameterizable1):
+class Ellipse(Conic, Parametric):
 
     def __init__(self, focus0: PointI, focus1: PointI, major_axis: float, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         focus0 = Point.mk(focus0)
@@ -124,7 +124,7 @@ class Ellipse(Conic, Parameterizable1):
             return cls(Point(0, -c), Point(0, c), 2 * b, **kwargs)
 
 
-class Circle(Ellipse, Parameterizable1):
+class Circle(Ellipse, Parametric):
 
     def __init__(self, radius: float, center: PointI = (0, 0), stroke: Stroke = Stroke(), fill: Fill = Fill()):
         center = Point.mk(center)
@@ -147,7 +147,7 @@ class Circle(Ellipse, Parameterizable1):
         return cls(center, radius)
 
 
-class Arc(Parameterizable1):
+class Arc(Parametric):
     def __init__(self, ellipse: Ellipse, start: float, end: float, stroke: Stroke = Stroke()):
         assert 0 <= start < end <= 1
         self.ellipse = ellipse

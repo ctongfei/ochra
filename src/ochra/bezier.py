@@ -1,11 +1,11 @@
 from ochra.element import Element
-from ochra.parameterizable import Parameterizable1
+from ochra.parametric import Parametric
 from ochra.plane import Transformation, Point, PointI
 from ochra.style.stroke import Stroke
 from ochra.util.functions import lerp_point
 
 
-class QuadraticBezierCurve(Parameterizable1):
+class QuadraticBezierCurve(Parametric):
 
     def __init__(self, p0: PointI, p1: PointI, p2: PointI, stroke: Stroke = Stroke()):
         self.p0 = Point.mk(p0)
@@ -24,7 +24,7 @@ class QuadraticBezierCurve(Parameterizable1):
         return QuadraticBezierCurve(f(self.p0), f(self.p1), f(self.p2), stroke=self.stroke)
 
 
-class CubicBezierCurve(Parameterizable1):
+class CubicBezierCurve(Parametric):
 
     def __init__(self, p0: PointI, p1: PointI, p2: PointI, p3: PointI, stroke: Stroke = Stroke()):
         self.p0 = Point.mk(p0)

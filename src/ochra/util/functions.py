@@ -20,7 +20,7 @@ def probit(x: float) -> float:
 
 
 def lerp(a: float, b: float, t: float) -> float:
-    return a + t * (b - a)
+    return (1 - t) * a + t * b
 
 
 def lerp_point(a: Point, b: Point, t: float) -> Point:

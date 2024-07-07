@@ -1,12 +1,12 @@
 from ochra.segment import LineSegment
-from ochra.parameterizable import Parameterizable1
+from ochra.parametric import Parametric
 from ochra.plane import Point, Vector, PointI
 from ochra.poly import Polygon
 from ochra.style import Fill
 from ochra.style.stroke import Stroke
 
 
-class AxisAlignedRectangle(Polygon, Parameterizable1):
+class AxisAlignedRectangle(Polygon, Parametric):
 
     def __init__(self, left_bottom: PointI, top_right: PointI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         left_bottom = Point.mk(left_bottom)
@@ -43,7 +43,7 @@ class AxisAlignedRectangle(Polygon, Parameterizable1):
     def diagonal1(self):
         return LineSegment(self.vertices[1], self.vertices[3])
 
-    def scale(self, sx: float, sy: float) -> 'Element':
+    def scale(self, sx: float, sy: float) -> 'AxisAlignedRectangle':
         return AxisAlignedRectangle(
             self.left_bottom.scale(sx, sy),
             self.top_right.scale(sx, sy),

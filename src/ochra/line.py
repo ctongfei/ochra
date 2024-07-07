@@ -3,14 +3,14 @@ import math
 
 import numpy as np
 
-from ochra.parameterizable import Parameterizable1
+from ochra.parametric import Parametric
 from ochra.plane import Point, Vector, Transformation, PointI
 from ochra.util.functions import logit
 from ochra.style.stroke import Stroke
 from ochra.util.property_utils import classproperty
 
 
-class Line(Parameterizable1):
+class Line(Parametric):
 
     def __init__(self,
                  coef: np.ndarray | Tuple[float, float, float],
@@ -19,21 +19,21 @@ class Line(Parameterizable1):
                  ):
         if isinstance(coef, tuple):
             coef = np.array(coef)
-        self.proj_coef = coef  # [a, b, c], projective coefficients
-        assert self.proj_coef.shape == (3,)
+        self.coef = coef  # [a, b, c], projective coefficients
+        assert self.coef.shape == (3,)
         self.stroke = stroke
 
     @property
     def _a(self) -> float:
-        return self.proj_coef[0].item()
+        return self.coef[0].item()
 
     @property
     def _b(self) -> float:
-        return self.proj_coef[1].item()
+        return self.coef[1].item()
 
     @property
     def _c(self) -> float:
-        return self.proj_coef[2].item()
+        return self.coef[2].item()
 
     @property
     def normal_vector(self):
@@ -64,7 +64,7 @@ class Line(Parameterizable1):
         return Point(x, y)
 
     def transform(self, f: Transformation) -> 'Line':
-        v = f.inverse().matrix.T.dot(self.proj_coef)
+        v = f.inverse().matrix.T.dot(self.coef)
         return Line(v, stroke=self.stroke)
 
     @classproperty

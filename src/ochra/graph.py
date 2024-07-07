@@ -1,13 +1,13 @@
 from typing import Callable
 
 from ochra import Element
-from ochra.parameterizable import Parameterizable1
+from ochra.parametric import Parametric
 from ochra.plane import Point
 from ochra.util.functions import lerp
 from ochra.style.stroke import Stroke
 
 
-class FunctionGraph(Parameterizable1):
+class FunctionGraph(Parametric):
     """
     A graph of a function over a specific interval.
     """
