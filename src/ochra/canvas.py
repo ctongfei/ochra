@@ -13,7 +13,7 @@ class Canvas(Group):
                  elements: Collection[Element],
                  viewport: AxisAlignedRectangle
                  ):
-        self.elements = elements
+        super().__init__(elements)
         self.viewport = viewport
 
 

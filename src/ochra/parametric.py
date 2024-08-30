@@ -60,9 +60,10 @@ class Parametric(Element):
 
 
 class Joined(Group, Parametric):
-    def __init__(self, shapes: Sequence[Parametric]):
-        super().__init__(shapes)
+    def __new__(cls, shapes: Sequence[Parametric]):
+        self = super().__new__(cls)
         self.shapes = shapes
+        return self
 
     @property
     def pieces(self) -> Sequence[Tuple[float, float]]:

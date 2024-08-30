@@ -1,14 +1,14 @@
 from .plane import Point, Vector, Transformation
 from .element import Element
 from .group import Group
-from .rect import AxisAlignedRectangle
+from .poly import Polygon, Polyline
+from .rect import Rectangle, AxisAlignedRectangle
 from .line import Line, HorizontalLine, VerticalLine
 from .segment import LineSegment
 from .conic import Conic, Circle, Ellipse
 from .mark import Mark
 from .graph import FunctionGraph
 from .text import Text
-from .poly import Polygon, Polyline
 from .marker import Marker, MarkerOrientation, MarkerConfig
 from .canvas import Canvas, EmbeddedCanvas
 

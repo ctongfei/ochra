@@ -25,7 +25,7 @@ class FontWeight:
 @dataclass
 class Font:
     family: str = "sans-serif"
-    size: float = 12.0
+    size: float = 10.0
     size_adjust: Optional[float] = 0.0
     stretch: Optional[str] = None
     style: Optional[FontStyle] = None

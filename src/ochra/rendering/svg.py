@@ -1,10 +1,11 @@
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 from typing import Dict
 
 from ochra import Transformation
 from ochra.canvas import Canvas, EmbeddedCanvas
 from ochra.mark import Mark
-from ochra.group import Group
+from ochra.group import Group, Annotation
 from ochra.conic import Ellipse, Circle, Arc
 from ochra.element import Element, AnyTransformed
 from ochra.marker import MarkerConfig, Marker
@@ -62,7 +63,9 @@ def font_to_css(font: Font) -> Dict[str, str]:
 
 
 def transformation_to_css(t: Transformation) -> Dict[str, str]:
-    s = ' '.join(f2s(x.item()) for x in t.matrix[:2, 2].flat)
+    m = t.matrix / t.matrix[2, 2]
+    [a, c, e, b, d, f] = m[:2, :].flatten()
+    s = ' '.join(f2s(x.item()) for x in [a, b, c, d, e, f])
     return {
         "transform": f"matrix({s})"
     }
@@ -83,22 +86,32 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         g.append(element_to_svg(c, e.element))
         return g
     elif isinstance(e, EmbeddedCanvas):
-        d = e.left_bottom - c.viewport.left_bottom
+        d = e.left_bottom - c.viewport.bottom_left
         return element_to_svg(c, e.canvas.translate(d.x, d.y))
     elif isinstance(e, Text):
-        t = ET.Element(
-            "text",
-            x=f2s(e.left_bottom.x),
-            y=f2s(e.left_bottom.y),
-            **font_to_css(e.font),
-        )
-        t.text = e.text
-        return t
+        if e.angle != 0.0:
+            return element_to_svg(
+                c,
+                AnyTransformed(
+                    Text(e.text, e.bottom_left, angle=0.0, font=e.font),
+                    Transformation.rotate(e.angle, e.bottom_left)
+                )
+            )
+        else:
+            t = ET.Element(
+                "text",
+                x=f2s(e.bbox.bottom_left.x),
+                y=f2s(-e.bbox.bottom_left.y),
+                transform="scale(1 -1)",
+                **font_to_css(e.font),
+            )
+            t.text = e.text
+            return t
     elif isinstance(e, Mark):
         return ET.Element(
             "use",
-            x=f2s(e.point.x + e.marker.viewport.left_bottom.x),
-            y=f2s(e.point.y + e.marker.viewport.left_bottom.y),
+            x=f2s(e.point.x + e.marker.viewport.bottom_left.x),
+            y=f2s(e.point.y + e.marker.viewport.bottom_left.y),
             href=f"#symbol-{e.marker.name}",
         )  # conform to SVG 1.1 standard, can't use refX, refY
     elif isinstance(e, Circle):
@@ -152,6 +165,8 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         )
     elif isinstance(e, Parametric):
         return element_to_svg(c, e.approx_as_polyline())
+    elif isinstance(e, Annotation):  # Materialize under the Ochra coordinate system
+        return element_to_svg(c, e.scale(1, -1).materialize().scale(1, -1))
     else:
         raise NotImplementedError(f"Unsupported element type: {type(e)}")
 
@@ -167,7 +182,7 @@ def marker_to_svg_def(c: Canvas, m: Marker) -> ET.Element:
         markerHeight=f2s(v.height),
         refX="0",
         refY="0",
-        viewBox=f"{v.left_bottom.x} {-v.left_bottom.y - v.height} {v.width} {v.height}",
+        viewBox=f"{v.bottom_left.x} {-v.bottom_left.y - v.height} {v.width} {v.height}",
     )
     marker.extend([element_to_svg(c, e) for e in m.elements])
     return marker
@@ -183,7 +198,7 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
         height=str(v.height)
     )
     symbol.extend([
-        element_to_svg(c, e.translate(-v.left_bottom.x, -v.left_bottom.y))
+        element_to_svg(c, e.translate(-v.bottom_left.x, -v.bottom_left.y))
         for e in m.elements
     ])  # Conform to SVG 1.1 standard, can't use refX, refY -- so have to move the elements
     return symbol
@@ -191,7 +206,7 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
 
 def to_svg(c: Canvas) -> ET.Element:
     all = [
-        element_to_svg(c, e.scale(1, -1))
+        element_to_svg(c, e.scale(1, -1))  # to SVG coordinate system
         for e in c.elements
     ]
     all_markers = [
@@ -207,7 +222,7 @@ def to_svg(c: Canvas) -> ET.Element:
         xmlns="http://www.w3.org/2000/svg",
         width=str(c.viewport.width),
         height=str(c.viewport.height),
-        viewBox=f"{c.viewport.left_bottom.x} {-c.viewport.left_bottom.y - c.viewport.height} {c.viewport.width} {c.viewport.height}"
+        viewBox=f"{c.viewport.bottom_left.x} {-c.viewport.bottom_left.y - c.viewport.height} {c.viewport.width} {c.viewport.height}"
     )
     defs = ET.Element("defs")
     defs.extend(all_markers)

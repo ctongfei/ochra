@@ -4,7 +4,7 @@ import math
 import numpy as np
 
 from ochra.parametric import Parametric
-from ochra.plane import Point, Vector, Transformation, PointI
+from ochra.plane import Point, Vector, Transformation, PointI, LineI
 from ochra.util.functions import logit
 from ochra.style.stroke import Stroke
 from ochra.util.property_utils import classproperty
@@ -12,16 +12,18 @@ from ochra.util.property_utils import classproperty
 
 class Line(Parametric):
 
-    def __init__(self,
-                 coef: np.ndarray | Tuple[float, float, float],
-                 stroke: Stroke = Stroke(),
-                 **kwargs
-                 ):
+    def __new__(cls,
+                coef: np.ndarray | LineI,
+                stroke: Stroke = Stroke(),
+                **kwargs
+                ):
+        self = super().__new__(cls)
         if isinstance(coef, tuple):
             coef = np.array(coef)
         self.coef = coef  # [a, b, c], projective coefficients
         assert self.coef.shape == (3,)
         self.stroke = stroke
+        return self
 
     @property
     def _a(self) -> float:
@@ -66,6 +68,16 @@ class Line(Parametric):
     def transform(self, f: Transformation) -> 'Line':
         v = f.inverse().matrix.T.dot(self.coef)
         return Line(v, stroke=self.stroke)
+
+    def closest_to(self, p: PointI) -> Point:
+        """
+        Returns the point on the line that is closest to the given point.
+        """
+        a, b, c = self.coef
+        p = Point.mk(p)
+        x = (b * (b * p.x - a * p.y) - a * c) / (a ** 2 + b ** 2)
+        y = (a * (-b * p.x + a * p.y) - b * c) / (a ** 2 + b ** 2)
+        return Point(x, y)
 
     @classproperty
     def y_axis(cls):

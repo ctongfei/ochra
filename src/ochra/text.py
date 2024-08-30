@@ -1,5 +1,8 @@
+import math
 import tempfile
+from typing import Callable
 
+from ochra.group import Annotation
 from ochra.element import Element
 from ochra.plane import Point, Transformation, PointI
 from ochra.rect import AxisAlignedRectangle
@@ -8,9 +11,10 @@ from ochra.style.font import Font
 
 class Text(Element):
 
-    def __init__(self, text: str, left_bottom: PointI, font: Font = Font()):
+    def __init__(self, text: str, bottom_left: PointI, angle: float = 0.0, font: Font = Font()):
         self.text = text
-        self.left_bottom = Point.mk(left_bottom)
+        self.bottom_left = Point.mk(bottom_left)
+        self.angle = angle
         self.font = font
         self.bbox = self._get_bounding_box()
 
@@ -26,10 +30,11 @@ class Text(Element):
         ctx.set_font_size(self.font.size)
         ctx.select_font_face(self.font.family, style_to_cairo(self.font.style), weight_to_cairo(self.font.weight))
         extents = ctx.text_extents(self.text)
-        return AxisAlignedRectangle(
-            Point(extents.x_bearing + self.left_bottom.x, -extents.y_bearing + self.left_bottom.y - extents.height),
-            Point(extents.x_bearing + self.left_bottom.x + extents.width, -extents.y_bearing + self.left_bottom.y)
-        )
+        rect = AxisAlignedRectangle(
+            Point(extents.x_bearing + self.bottom_left.x, -extents.y_bearing + self.bottom_left.y - extents.height),
+            Point(extents.x_bearing + self.bottom_left.x + extents.width, -extents.y_bearing + self.bottom_left.y)
+        ).rotate(self.angle, self.bottom_left)
+        return rect
 
     @property
     def center(self) -> Point:
@@ -45,21 +50,29 @@ class Text(Element):
         return self.bbox.width
 
     @classmethod
-    def centered(cls, text: str, center: Point, font: Font = Font()) -> 'Text':
-        bbox = Text(text, Point.origin, font).bbox
-        return cls(text, center - bbox.center.as_vector(), font)
+    def centered(cls, text: str, center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+        center = Point.mk(center)
+        bbox = cls(text, Point.origin, angle, font).bbox
+        return cls(text, center - bbox.center.as_vector(), angle, font)
 
     @classmethod
-    def top_centered(cls, text: str, top_center: Point, font: Font = Font()) -> 'Text':
-        bbox = Text(text, Point.origin, font).bbox
-        return cls(text, top_center - bbox.top_center.as_vector(), font)
+    def top_centered(cls, text: str, top_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+        top_center = Point.mk(top_center)
+        bbox = cls(text, Point.origin, angle, font).bbox
+        return cls(text, top_center - bbox.top_center.as_vector(), angle, font)
 
     @classmethod
-    def right_centered(cls, text: str, right_center: Point, font: Font = Font()) -> 'Text':
-        bbox = Text(text, Point.origin, font).bbox
-        return cls(text, right_center - bbox.right_center.as_vector(), font)
+    def right_centered(cls, text: str, right_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+        right_center = Point.mk(right_center)
+        bbox = cls(text, Point.origin, angle, font).bbox
+        return cls(text, right_center - bbox.right_center.as_vector(), angle, font)
 
-    def transform(self, f: Transformation) -> 'Element':
-        return Text(self.text, f(self.left_bottom), self.font)
-        # TODO: properly transform the text
+    @classmethod
+    def bottom_centered(cls, text: str, bottom_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+        bottom_center = Point.mk(bottom_center)
+        bbox = cls(text, Point.origin, angle, font).bbox
+        return cls(text, bottom_center - bbox.bottom_center.as_vector(), angle, font)
 
+    def translate(self, dx: float, dy: float) -> 'Text':
+        tr = Transformation.translate((dx, dy))
+        return Text(self.text, tr(self.bottom_left), self.angle, self.font)

@@ -61,6 +61,9 @@ class Point:
     def as_vector(self) -> Vector:
         return Vector(self.x, self.y)
 
+    def to_proj_point(self) -> 'ProjPoint':
+        return ProjPoint(self.x, self.y, 1)
+
     @classproperty
     def origin(cls):
         return cls(0, 0)
@@ -78,7 +81,7 @@ class Point:
 
 PointI: TypeAlias = Point | Tuple[float, float]
 VectorI: TypeAlias = Vector | Tuple[float, float]
-LineI: TypeAlias = Tuple[float, float, float]  # ax + by + c = 0
+LineI: TypeAlias = Tuple[float, float, float]  # a x + b y + c = 0
 
 
 @dataclass
@@ -95,15 +98,17 @@ class Transformation:
     """
     Represents a 2D affine transformation.
     """
-    def __init__(self, matrix: np.ndarray):
+    def __new__(cls, matrix: np.ndarray):
         """
         :param matrix: 3x3 matrix representing affine transformation.
         """
+        self = super().__new__(cls)
         assert matrix.shape == (3, 3)
         assert matrix[2, 0] == 0
         assert matrix[2, 1] == 0
         assert matrix[2, 2] == 1
         self.matrix = matrix
+        return self
 
     def __matmul__(self, other):
         return Transformation(self.matrix @ other.matrix)
@@ -116,6 +121,28 @@ class Transformation:
     def inverse(self):
         inverse = np.linalg.inv(self.matrix)
         return Transformation(inverse)
+
+    def decompose(self) -> Tuple["Transformation", "Transformation", "Transformation"]:
+        """
+        Decomposes into translation, rotation, and scaling.
+        """
+        w = self.matrix[2, 2]
+        m = self.matrix / w
+        translation = np.eye(3)
+        translation[:2, 2] = m[:2, 2]
+        a, b, c, d = m[0, 0], m[0, 1], m[1, 0], m[1, 1]
+        sx = math.hypot(a, b)
+        sy = math.hypot(c, d)
+        rotation = np.eye(3)
+        rotation[:2, 0] = m[:2, 0] / sx
+        rotation[:2, 1] = m[:2, 1] / sy
+        return Transformation(translation), Transformation(rotation), Transformation.scale((sx, sy))
+
+    def is_identity(self):
+        return np.allclose(self.matrix, np.eye(3))
+
+    def __repr__(self):
+        return f"Transformation({self.matrix})"
 
     @classproperty
     def identity(cls):

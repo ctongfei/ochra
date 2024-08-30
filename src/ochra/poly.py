@@ -23,6 +23,9 @@ class Polyline(Parametric):
         self.marker_start = marker_start
         self.marker_mid = marker_mid
         self.marker_end = marker_end
+        for m in [marker_start, marker_mid, marker_end]:
+            if m is not None:
+                Marker.register_as_marker(m)
 
     @property
     def num_vertices(self):

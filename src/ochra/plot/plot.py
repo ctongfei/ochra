@@ -32,22 +32,32 @@ class LinePlot(Plot[X, Y]):
         self.marker = marker
 
     def draw(self, x_axis: ContinuousAxis, y_axis: ContinuousAxis) -> Element:
-        return Polyline(
-            sorted(
-                [Point(x_axis.locate(x), y_axis.locate(y)) for x, y in self.data],
-                key=lambda p: p.x
-            ),
-            stroke=self.stroke,
-            marker_start=self.marker,
-            marker_mid=self.marker,
-            marker_end=self.marker,
+        points = sorted(
+            [Point(x_axis.locate(x), y_axis.locate(y)) for x, y in self.data],
+            key=lambda p: p.x
+        )
+        if self.marker is not None:
+            marks = [
+                Mark(p, self.marker)
+                for p in points
+            ]
+        else:
+            marks = []
+        return Group(
+            elements=[
+                Polyline(
+                    points,
+                    stroke=self.stroke,
+                ),
+                *marks
+            ]
         )
 
 
 class ScatterPlot(Plot[X, Y]):
     def __init__(self,
                  data: Collection[Tuple[X, Y]],
-                 marker: Optional[Marker] = None,
+                 marker: Marker,
                  ):
         self.data = data
         self.marker = marker

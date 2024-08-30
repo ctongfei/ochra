@@ -23,7 +23,6 @@ class ContinuousAxis:
     locate: Callable[[float], float] = lambda x: x
     major_ticks: Sequence[float] = None
     minor_ticks: Sequence[float] = None
-    scale: float = 1.0
     stroke: Stroke = field(default_factory=Stroke)
     tick_stroke: Stroke = field(default_factory=Stroke)
     text_style: Font = field(default_factory=Font)

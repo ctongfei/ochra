@@ -32,7 +32,6 @@ class Marker:
         self.units = units
         self.orientation = orientation
         self.name = name if name is not None else hex(id(self))[2:]
-        Marker.all_named_markers[self.name] = self
 
     @property
     def canvas(self) -> "Canvas":
@@ -40,7 +39,7 @@ class Marker:
         return Canvas(self.elements, self.viewport)
 
     @classmethod
-    def circle(cls, size: float = 4.0, **kwargs):
+    def circle(cls, size: float = 2.0, **kwargs):
         from ochra.conic import Circle
         from ochra.rect import AxisAlignedRectangle
         return cls(
@@ -49,13 +48,21 @@ class Marker:
         )
 
     @classmethod
-    def polygon(cls, n: int, size: float = 5.0, angle: float = 0, **kwargs):
+    def polygon(cls, n: int, size: float = 3.0, angle: float = 0, **kwargs):
         from ochra.poly import Polygon
         from ochra.rect import AxisAlignedRectangle
         return cls(
             [Polygon.regular(n, circumradius=size, **kwargs).rotate(angle)],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
         )
+
+    @classmethod
+    def register_as_symbol(cls, m: 'Marker'):
+        Marker.all_named_symbols[f"symbol-{m.name}"] = m
+
+    @classmethod
+    def register_as_marker(cls, m: 'Marker'):
+        Marker.all_named_markers[m.name] = m
 
 
 @dataclass

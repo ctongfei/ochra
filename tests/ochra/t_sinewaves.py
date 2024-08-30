@@ -21,7 +21,7 @@ plot = oxp.ChartArea(
     x_axis=oxp.ContinuousAxis("x", (0, 10), scale=30),
     y_axis=oxp.ContinuousAxis("y", (0, 10), scale=30),
     plots=[
-        oxp.ScatterPlot(data, marker=ox.Marker.circle(stroke=oxs.Stroke(color, width=1)))
+        oxp.LinePlot(data, marker=ox.Marker.polygon(3, stroke=oxs.Stroke(color, width=1)))
         for data, color in zip(data_series, ios)
     ],
     background=oxs.Fill(ios.gray6),
