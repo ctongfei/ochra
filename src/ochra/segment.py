@@ -1,12 +1,15 @@
 import math
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from ochra.marker import Marker
 from ochra.line import Line
+from ochra.marker import Marker
 from ochra.parametric import Parametric
-from ochra.plane import Point, Transformation, Vector, PointI
-from ochra.util.functions import lerp_point, dist
+from ochra.plane import Point, PointI, Transformation, Vector
 from ochra.style.stroke import Stroke
+from ochra.util.functions import dist, lerp_point
+
+if TYPE_CHECKING:
+    from ochra.rect import AxisAlignedRectangle
 
 
 class LineSegment(Parametric):
@@ -52,6 +55,10 @@ class LineSegment(Parametric):
 
     def at(self, t: float):
         return lerp_point(self.p0, self.p1, t)
+
+    def axis_aligned_bbox(self) -> 'Optional[AxisAlignedRectangle]':
+        from ochra.rect import AxisAlignedRectangle
+        return AxisAlignedRectangle(self.p0, self.p1)
 
     def transform(self, f: Transformation) -> 'LineSegment':
         return LineSegment(

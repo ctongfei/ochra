@@ -1,13 +1,21 @@
-from typing import Collection, Iterator, Callable
+from typing import Callable, Collection, Iterator, Optional, TYPE_CHECKING
 
 from ochra.element import Element
-from ochra.plane import Transformation, PointI, Point
+from ochra.plane import Point, PointI, Transformation
+
+if TYPE_CHECKING:
+    from ochra.rect import AxisAlignedRectangle
 
 
 class Group(Element):
 
     def __init__(self, elements: Collection[Element]):
         self.elements = elements
+
+    def axis_aligned_bbox(self) -> 'AxisAlignedRectangle':
+        from ochra.util.functions import aligned_bbox_from_bboxes
+        bboxes = [e.axis_aligned_bbox() for e in self.elements]
+        return aligned_bbox_from_bboxes(bboxes)
 
     def recursive_children(self) -> Iterator[Element]:
         for e in self.elements:
@@ -33,6 +41,9 @@ class Annotation(Element):
         super().__init__()
         self.anchor = Point.mk(anchor)
         self.f = f
+
+    def axis_aligned_bbox(self) -> 'Optional[AxisAlignedRectangle]':
+        return self.materialize().axis_aligned_bbox()
 
     def materialize(self) -> Element:
         return self.f(self.anchor)

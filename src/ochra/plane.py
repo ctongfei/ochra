@@ -1,7 +1,8 @@
 import math
 from dataclasses import dataclass
-import numpy as np
 from typing import Tuple, TypeAlias
+
+import numpy as np
 
 from ochra.util.property_utils import classproperty
 
@@ -103,11 +104,11 @@ class Transformation:
         :param matrix: 3x3 matrix representing affine transformation.
         """
         self = super().__new__(cls)
+        w = matrix[2, 2]
         assert matrix.shape == (3, 3)
         assert matrix[2, 0] == 0
         assert matrix[2, 1] == 0
-        assert matrix[2, 2] == 1
-        self.matrix = matrix
+        self.matrix = matrix / w
         return self
 
     def __matmul__(self, other):

@@ -1,8 +1,8 @@
 import math
 
-from ochra.parametric import Parametric
-from ochra.plane import Point, Vector, PointI, Transformation
 from ochra.line import Line
+from ochra.parametric import Parametric
+from ochra.plane import Point, PointI, Transformation, Vector
 from ochra.poly import Polygon
 from ochra.style import Fill
 from ochra.style.stroke import Stroke
@@ -43,10 +43,17 @@ class Rectangle(Polygon, Parametric):
     def left_center(self):
         return lerp_point(self.bottom_left, self.top_left, 0.5)
 
+    def axis_aligned_bbox(self) -> 'AxisAlignedRectangle':
+        l = min(p.x for p in self.vertices)
+        r = max(p.x for p in self.vertices)
+        b = min(p.y for p in self.vertices)
+        u = max(p.y for p in self.vertices)
+        return AxisAlignedRectangle(bottom_left=(l, b), top_right=(r, u))
+
     def translate(self, dx: float, dy: float) -> 'Rectangle':
         return Rectangle(
-            self.bottom_left.translate(dx, dy),
-            self.top_right.translate(dx, dy),
+            self.bottom_left + Vector(dx, dy),
+            self.top_right + Vector(dx, dy),
             self.angle,
             stroke=self.stroke,
             fill=self.fill
@@ -67,6 +74,9 @@ class AxisAlignedRectangle(Rectangle, Parametric):
 
     def __init__(self, bottom_left: PointI, top_right: PointI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         super().__init__(bottom_left, top_right, 0.0, stroke, fill)
+
+    def axis_aligned_bbox(self) -> 'AxisAlignedRectangle':
+        return self
 
     def scale(self, sx: float, sy: float) -> 'AxisAlignedRectangle':
         return AxisAlignedRectangle(

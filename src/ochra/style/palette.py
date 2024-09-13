@@ -1,4 +1,4 @@
-from typing import Union, Iterator, Tuple, Sequence, Mapping
+from typing import Iterator, Mapping, Sequence, Tuple, Union
 
 from ochra.style.color import Color
 

@@ -1,28 +1,27 @@
 import math
-from dataclasses import dataclass, field
-from typing import Generic, Collection, Tuple
+from typing import Collection, Generic, Tuple
 
-from ochra.group import Group, Annotation
-from ochra.plane import Point
-from ochra.segment import LineSegment
-from ochra.rect import AxisAlignedRectangle
-from ochra.style import Fill
-from ochra.text import Text
 from ochra.canvas import Canvas
-from ochra.plot.typedef import X, Y
-from ochra.plot.axis import ContinuousAxis
+from ochra.group import Annotation, Group
+from ochra.plane import Point
+from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
+from ochra.plot.typedef import X, Y
+from ochra.rect import AxisAlignedRectangle
+from ochra.segment import LineSegment
+from ochra.style import Fill
 from ochra.style.font import Font
 from ochra.style.stroke import Stroke
+from ochra.text import Text
 from ochra.util.functions import f2s
 
 
-class ChartArea(Canvas, Generic[X, Y]):
+class Chart(Canvas, Generic[X, Y]):
 
     def __init__(self,
                  size: Tuple[float, float],
-                 x_axis: ContinuousAxis,
-                 y_axis: ContinuousAxis,
+                 x_axis: Axis[X],
+                 y_axis: Axis[Y],
                  plots: Collection[Plot[X, Y]],
                  font: Font = Font(),
                  background: Fill = Fill(),
@@ -39,40 +38,43 @@ class ChartArea(Canvas, Generic[X, Y]):
         self.grid_stroke = grid_stroke
         X = x_axis
         Y = y_axis
-        rect = AxisAlignedRectangle(
+        rect_bg = AxisAlignedRectangle(
             (0, 0),
             (self.x_size, self.y_size),
-            stroke=border_stroke,
             fill=background
+        )
+        border = AxisAlignedRectangle(
+            (0, 0),
+            (self.x_size, self.y_size),
+            stroke=border_stroke
         )
         x_axis = self._draw_x_axis()
         y_axis = self._draw_y_axis()
-        x_scale = self.x_size / (X.upper_bound - X.lower_bound)
-        y_scale = self.y_size / (Y.upper_bound - Y.lower_bound)
+        x_scale = self.x_size / (X.locate_upper_bound() - X.locate_lower_bound())
+        y_scale = self.y_size / (Y.locate_upper_bound() - Y.locate_lower_bound())
         grid = self._draw_grid()
         super().__init__(
             [
-                rect,
-                x_axis.translate(-X.lower_bound, 0).scale(x_scale, 1),
-                y_axis.translate(0, -Y.lower_bound).scale(1, y_scale),
+                rect_bg,
+                grid.translate(-X.locate_lower_bound(), -Y.locate_lower_bound()).scale(x_scale, y_scale),
+                border,
+                x_axis.translate(-X.locate_lower_bound(), 0).scale(x_scale, 1),
+                y_axis.translate(0, -Y.locate_lower_bound()).scale(1, y_scale),
                 Group(
                     elements=[
-                        grid,
-                        *[
-                            plot.draw(X, Y)
-                            for plot in self.plots
-                        ]
+                        plot.draw(X, Y)
+                        for plot in self.plots
                     ],
-                ).translate(-X.lower_bound, -Y.lower_bound).scale(x_scale, y_scale)
+                ).translate(-X.locate_lower_bound(), -Y.locate_lower_bound()).scale(x_scale, y_scale),
             ],
-            viewport=rect,
+            viewport=border,
         )
 
     def _draw_x_axis(self) -> Group:
         X = self.x_axis
         axis_line = LineSegment(
-            Point(X.locate(X.lower_bound), 0),
-            Point(X.locate(X.upper_bound), 0),
+            Point(X.locate_lower_bound(), 0),
+            Point(X.locate_upper_bound(), 0),
             stroke=self.border_stroke
         )
 
@@ -108,7 +110,7 @@ class ChartArea(Canvas, Generic[X, Y]):
         ]
         axis_label = Annotation(
             Point(
-                (X.locate(X.lower_bound) + X.locate(X.upper_bound)) / 2,
+                (X.locate(X.bounds[0]) + X.locate(X.bounds[1])) / 2,
                 - X.major_tick_length - text_height - 2 * X.text_padding
             ),
             lambda p: Text.top_centered(
@@ -129,8 +131,8 @@ class ChartArea(Canvas, Generic[X, Y]):
     def _draw_y_axis(self) -> Group:
         Y = self.y_axis
         axis_line = LineSegment(
-            Point(0, Y.locate(Y.lower_bound)),
-            Point(0, Y.locate(Y.upper_bound)),
+            Point(0, Y.locate(Y.bounds[0])),
+            Point(0, Y.locate(Y.bounds[1])),
             stroke=self.border_stroke
         )
 
@@ -152,9 +154,11 @@ class ChartArea(Canvas, Generic[X, Y]):
             for y in Y.major_ticks
         ]
         text_width = max(
-            t.materialize().width
-            for tick in major_ticks
-            for t in tick.recursive_children() if isinstance(t, Annotation)
+            (
+                t.materialize().width
+                for tick in major_ticks
+                for t in tick.recursive_children() if isinstance(t, Annotation)
+            )
         )
         minor_ticks = [] if Y.minor_ticks is None else [
             LineSegment(
@@ -167,7 +171,7 @@ class ChartArea(Canvas, Generic[X, Y]):
         axis_label = Annotation(
             Point(
                 -Y.major_tick_length - text_width - 2 * Y.text_padding,
-                (Y.locate(Y.lower_bound) + Y.locate(Y.upper_bound)) / 2
+                (Y.locate(Y.bounds[0]) + Y.locate(Y.bounds[1])) / 2
             ),
             lambda p: Text.bottom_centered(
                 text=Y.label,
@@ -188,20 +192,20 @@ class ChartArea(Canvas, Generic[X, Y]):
     def _draw_grid(self) -> Group:
         X = self.x_axis
         Y = self.y_axis
-        x_ticks_to_draw = [] if X.major_ticks is None else [x for x in X.major_ticks if X.lower_bound < x < X.upper_bound]
-        y_ticks_to_draw = [] if Y.major_ticks is None else [y for y in Y.major_ticks if Y.lower_bound < y < Y.upper_bound]
+        x_ticks_to_draw = [] if X.major_ticks is None else [x for x in X.major_ticks if x in X]
+        y_ticks_to_draw = [] if Y.major_ticks is None else [y for y in Y.major_ticks if y in Y]
         x_lines = [
             LineSegment(
-                Point(X.locate(x), Y.locate(Y.lower_bound)),
-                Point(X.locate(x), Y.locate(Y.upper_bound)),
+                Point(X.locate(x), Y.locate_lower_bound()),
+                Point(X.locate(x), Y.locate_upper_bound()),
                 stroke=self.grid_stroke
             )
             for x in x_ticks_to_draw
         ]
         y_lines = [
             LineSegment(
-                Point(X.locate(X.lower_bound), Y.locate(y)),
-                Point(X.locate(X.upper_bound), Y.locate(y)),
+                Point(X.locate_lower_bound(), Y.locate(y)),
+                Point(X.locate_upper_bound(), Y.locate(y)),
                 stroke=self.grid_stroke
             )
             for y in y_ticks_to_draw

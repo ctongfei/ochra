@@ -1,21 +1,20 @@
 import xml.etree.ElementTree as ET
-from dataclasses import replace
 from typing import Dict
 
 from ochra import Transformation
 from ochra.canvas import Canvas, EmbeddedCanvas
+from ochra.conic import Circle, Ellipse
+from ochra.element import AnyTransformed, Element
+from ochra.group import Annotation, Group
 from ochra.mark import Mark
-from ochra.group import Group, Annotation
-from ochra.conic import Ellipse, Circle, Arc
-from ochra.element import Element, AnyTransformed
-from ochra.marker import MarkerConfig, Marker
+from ochra.marker import Marker, MarkerConfig
 from ochra.parametric import Parametric
-from ochra.poly import Polyline, Polygon
+from ochra.poly import Polygon, Polyline
 from ochra.segment import LineSegment
-from ochra.text import Text
-from ochra.style.font import Font
-from ochra.style.stroke import Stroke, Dash
 from ochra.style.fill import Fill
+from ochra.style.font import Font
+from ochra.style.stroke import Dash, Stroke
+from ochra.text import Text
 from ochra.util.functions import f2s, rad_to_deg
 
 

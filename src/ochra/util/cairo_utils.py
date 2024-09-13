@@ -1,6 +1,8 @@
 from typing import Optional
+
 import cairo
-from ochra.style.font import Font, FontStyle, FontWeight
+
+from ochra.style.font import FontStyle, FontWeight
 
 
 def style_to_cairo(style: Optional[FontStyle]):

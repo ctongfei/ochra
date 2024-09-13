@@ -1,6 +1,10 @@
 from abc import ABC
+from typing import Optional, TYPE_CHECKING
 
-from ochra.plane import Transformation, Point, Vector, PointI, LineI
+from ochra.plane import LineI, Point, PointI, Transformation, Vector
+
+if TYPE_CHECKING:
+    from ochra.rect import AxisAlignedRectangle
 
 
 class Element(ABC):
@@ -16,6 +20,9 @@ class Element(ABC):
         :return: A new element where every point is transformed.
         """
         return AnyTransformed(self, f)  # fallback
+
+    def axis_aligned_bbox(self) -> 'Optional[AxisAlignedRectangle]':
+        raise NotImplementedError
 
     def translate(self, dx: float, dy: float) -> 'Element':
         return self.transform(Transformation.translate(Vector(dx, dy)))

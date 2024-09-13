@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import Collection
+from typing import Collection, Optional
 
-from ochra.plane import Point, PointI
-from ochra.group import Group
 from ochra.element import Element
+from ochra.group import Group
+from ochra.plane import Point, PointI
 from ochra.rect import AxisAlignedRectangle
 
 
@@ -11,9 +11,11 @@ class Canvas(Group):
 
     def __init__(self,
                  elements: Collection[Element],
-                 viewport: AxisAlignedRectangle
+                 viewport: Optional[AxisAlignedRectangle] = None
                  ):
         super().__init__(elements)
+        if viewport is None:
+            viewport = self.axis_aligned_bbox()
         self.viewport = viewport
 
 

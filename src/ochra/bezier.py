@@ -1,6 +1,5 @@
-from ochra.element import Element
 from ochra.parametric import Parametric
-from ochra.plane import Transformation, Point, PointI
+from ochra.plane import Point, PointI, Transformation
 from ochra.style.stroke import Stroke
 from ochra.util.functions import lerp_point
 

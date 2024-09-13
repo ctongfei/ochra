@@ -1,13 +1,16 @@
-from typing import Union, Tuple
+from typing import Optional, TYPE_CHECKING
 import math
 
 import numpy as np
 
 from ochra.parametric import Parametric
-from ochra.plane import Point, Vector, Transformation, PointI, LineI
-from ochra.util.functions import logit
+from ochra.plane import LineI, Point, PointI, Transformation, Vector
 from ochra.style.stroke import Stroke
+from ochra.util.functions import logit
 from ochra.util.property_utils import classproperty
+
+if TYPE_CHECKING:
+    from ochra.rect import AxisAlignedRectangle
 
 
 class Line(Parametric):
@@ -55,6 +58,10 @@ class Line(Parametric):
 
     def x_intercept(self) -> float:
         return +self._c / self._a
+
+    def axis_aligned_bbox(self) -> 'Optional[AxisAlignedRectangle]':
+        from ochra.exception import BoundingBoxIndeterminateException
+        raise BoundingBoxIndeterminateException(self)
 
     def at(self, t: float):
         s = logit(t) * 1000  # maps (0, 1) to (-∞, +∞)

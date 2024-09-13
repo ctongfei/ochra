@@ -1,19 +1,46 @@
-from .plane import Point, Vector, Transformation
-from .element import Element
-from .group import Group
-from .poly import Polygon, Polyline
-from .rect import Rectangle, AxisAlignedRectangle
-from .line import Line, HorizontalLine, VerticalLine
-from .segment import LineSegment
-from .conic import Conic, Circle, Ellipse
-from .mark import Mark
-from .graph import FunctionGraph
-from .text import Text
-from .marker import Marker, MarkerOrientation, MarkerConfig
+from . import plot, style
 from .canvas import Canvas, EmbeddedCanvas
-
+from .conic import Circle, Conic, Ellipse
+from .element import Element
+from .graph import FunctionGraph
+from .group import Group
+from .line import HorizontalLine, Line, VerticalLine
+from .mark import Mark
+from .marker import Marker, MarkerConfig, MarkerOrientation
+from .plane import Point, Transformation, Vector
+from .poly import Polygon, Polyline
+from .rect import AxisAlignedRectangle, Rectangle
 from .rendering.svg import to_svg, to_svg_file
+from .segment import LineSegment
+from .text import Text
 
-from .style import markers
-from . import style
-from . import plot
+__all__ = [
+    'plot',
+    'style',
+    'Canvas',
+    'EmbeddedCanvas',
+    'Circle',
+    'Conic',
+    'Ellipse',
+    'Element',
+    'FunctionGraph',
+    'Group',
+    'HorizontalLine',
+    'Line',
+    'VerticalLine',
+    'Mark',
+    'Marker',
+    'MarkerConfig',
+    'MarkerOrientation',
+    'Point',
+    'Transformation',
+    'Vector',
+    'Polygon',
+    'Polyline',
+    'AxisAlignedRectangle',
+    'Rectangle',
+    'to_svg',
+    'to_svg_file',
+    'LineSegment',
+    'Text',
+]

@@ -1,10 +1,11 @@
 import math
 from dataclasses import replace
+
 import ochra as ox
 import ochra.style as oxs
-from ochra.util.functions import deg_to_rad
+from ochra.style.arrowhead import arrow_line, arrow_stealth, arrow_triangle
 from ochra.style.palette import ios
-from ochra.style.arrowhead import arrow_triangle, arrow_stealth, arrow_line
+from ochra.util.functions import deg_to_rad
 
 stroke = oxs.Stroke(ios.blue, width=2, line_join=oxs.LineJoin.miter)
 

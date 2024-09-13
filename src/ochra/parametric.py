@@ -1,10 +1,11 @@
-from typing import Sequence, Tuple, Optional
 import bisect
+from typing import Optional, Sequence, Tuple
+
 import numpy as np
 
-from ochra import Element
-from ochra.plane import Point, Transformation
+from ochra.element import Element
 from ochra.group import Group
+from ochra.plane import Point, Transformation
 
 
 class Parametric(Element):

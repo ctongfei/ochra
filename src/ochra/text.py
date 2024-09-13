@@ -1,11 +1,8 @@
-import math
 import tempfile
-from typing import Callable
 
-from ochra.group import Annotation
 from ochra.element import Element
-from ochra.plane import Point, Transformation, PointI
-from ochra.rect import AxisAlignedRectangle
+from ochra.plane import Point, PointI, Transformation
+from ochra.rect import AxisAlignedRectangle, Rectangle
 from ochra.style.font import Font
 
 
@@ -18,8 +15,9 @@ class Text(Element):
         self.font = font
         self.bbox = self._get_bounding_box()
 
-    def _get_bounding_box(self) -> 'AxisAlignedRectangle':
+    def _get_bounding_box(self) -> 'Rectangle':
         import cairo
+
         from ochra.util.cairo_utils import style_to_cairo, weight_to_cairo
         surface = cairo.SVGSurface(
             tempfile.mktemp(suffix=".svg"),
@@ -76,3 +74,6 @@ class Text(Element):
     def translate(self, dx: float, dy: float) -> 'Text':
         tr = Transformation.translate((dx, dy))
         return Text(self.text, tr(self.bottom_left), self.angle, self.font)
+
+    def axis_aligned_bbox(self) -> AxisAlignedRectangle:
+        return self.bbox.axis_aligned_bbox()

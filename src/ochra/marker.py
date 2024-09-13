@@ -1,8 +1,12 @@
 from dataclasses import dataclass
 from enum import Enum
-from typing import Collection, Optional, Dict
+from typing import Collection, Dict, Optional, TYPE_CHECKING
 
 from ochra.element import Element
+
+if TYPE_CHECKING:
+    from ochra.canvas import Canvas
+    from ochra.rect import AxisAlignedRectangle
 
 
 class MarkerOrientation(Enum):
@@ -48,7 +52,31 @@ class Marker:
         )
 
     @classmethod
-    def polygon(cls, n: int, size: float = 3.0, angle: float = 0, **kwargs):
+    def x_mark(cls, size: float = 2, **kwargs):
+        from ochra.rect import AxisAlignedRectangle
+        from ochra.segment import LineSegment
+        return cls(
+            [
+                LineSegment((-size, -size), (size, size), **kwargs),
+                LineSegment((-size, size), (size, -size), **kwargs),
+            ],
+            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
+        )
+
+    @classmethod
+    def plus_mark(cls, size: float = 2.5, **kwargs):
+        from ochra.rect import AxisAlignedRectangle
+        from ochra.segment import LineSegment
+        return cls(
+            [
+                LineSegment((-size, 0), (size, 0), **kwargs),
+                LineSegment((0, -size), (0, size), **kwargs),
+            ],
+            viewport=AxisAlignedRectangle((-size, -size), (size, size)),
+        )
+
+    @classmethod
+    def polygon(cls, n: int, size: float = 2.0, angle: float = 0, **kwargs):
         from ochra.poly import Polygon
         from ochra.rect import AxisAlignedRectangle
         return cls(

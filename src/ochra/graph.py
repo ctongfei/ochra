@@ -1,10 +1,9 @@
 from typing import Callable
 
-from ochra import Element
 from ochra.parametric import Parametric
 from ochra.plane import Point
-from ochra.util.functions import lerp
 from ochra.style.stroke import Stroke
+from ochra.util.functions import lerp
 
 
 class FunctionGraph(Parametric):

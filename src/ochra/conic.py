@@ -1,13 +1,15 @@
 import math
 from typing import Tuple
+
 import numpy as np
 
 from ochra.element import Element
 from ochra.parametric import Parametric
-from ochra.plane import Point, Transformation, PointI
+from ochra.plane import Point, PointI, Transformation, Vector
+from ochra.rect import AxisAlignedRectangle
 from ochra.style import Fill
 from ochra.style.stroke import Stroke
-from ochra.util.functions import lerp_point, dist, lerp
+from ochra.util.functions import dist, lerp, lerp_point
 
 
 class Conic(Parametric):
@@ -58,7 +60,7 @@ class Ellipse(Conic, Parametric):
         focus0 = Point.mk(focus0)
         focus1 = Point.mk(focus1)
 
-        from math import sin, cos, atan2
+        from math import atan2, cos, sin
         center = lerp_point(focus0, focus1, 0.5)
         a = major_axis / 2
         b = dist(focus0, focus1) / 2
@@ -107,6 +109,10 @@ class Ellipse(Conic, Parametric):
     def arc_between(self, start: float, end: float):
         return Arc(self, start, end)
 
+    def __contains__(self, p: PointI):
+        p = Point.mk(p)
+        return dist(self.focus0, p) + dist(self.focus1, p) <= self.major_axis
+
     def at(self, t: float):
         θ = t * math.tau
         φ = self.major_axis_angle
@@ -136,6 +142,16 @@ class Circle(Ellipse, Parametric):
         x, y = self.center
         θ = t * math.tau  # [0, 1] -> [0, τ]
         return x + self.radius * math.cos(θ), y + self.radius * math.sin(θ)
+
+    def __contains__(self, p: PointI):
+        p = Point.mk(p)
+        return dist(self.center, p) <= self.radius
+
+    def axis_aligned_bbox(self) -> 'AxisAlignedRectangle':
+        return AxisAlignedRectangle(
+            self.center - Vector(self.radius, self.radius),
+            self.center + Vector(self.radius, self.radius)
+        )
 
     def transform(self, f: Transformation) -> 'Circle':
         # TODO: wrong! transforms into an ellipse

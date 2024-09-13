@@ -1,12 +1,15 @@
 import math
-from typing import Sequence, Optional
+from typing import Optional, Sequence, TYPE_CHECKING
 
 from ochra.marker import Marker
-from ochra.parametric import Parametric, Joined
-from ochra.plane import Point, Transformation, PointI
+from ochra.parametric import Joined, Parametric
+from ochra.plane import Point, PointI, Transformation
 from ochra.segment import LineSegment
-from ochra.style.stroke import Stroke
 from ochra.style.fill import Fill
+from ochra.style.stroke import Stroke
+
+if TYPE_CHECKING:
+    from ochra.rect import AxisAlignedRectangle
 
 
 class Polyline(Parametric):
@@ -37,6 +40,10 @@ class Polyline(Parametric):
             LineSegment(self.vertices[i], self.vertices[i + 1])
             for i in range(self.num_vertices - 1)
         ]
+
+    def axis_aligned_bbox(self) -> 'AxisAlignedRectangle':
+        from ochra.util.functions import aligned_bbox_from_points
+        return aligned_bbox_from_points(self.vertices)
 
     def at(self, t: float):
         if t == 1.0:
@@ -79,6 +86,10 @@ class Polygon(Parametric):
             LineSegment(self.vertices[i], self.vertices[(i + 1) % self.num_vertices])
             for i in range(self.num_vertices)
         ]
+
+    def axis_aligned_bbox(self) -> 'AxisAlignedRectangle':
+        from ochra.util.functions import aligned_bbox_from_points
+        return aligned_bbox_from_points(self.vertices)
 
     def at(self, t: float):
         if t == 1.0:
