@@ -2,7 +2,7 @@ import math
 from dataclasses import replace
 
 from ochra.marker import Marker
-from ochra.plane import Point
+from ochra.geometry import Point
 from ochra.poly import Polygon, Polyline
 from ochra.rect import AxisAlignedRectangle
 from ochra.style.fill import Fill

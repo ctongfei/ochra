@@ -4,33 +4,35 @@ from vega_datasets import data
 import ochra as ox
 import ochra.plot as oxp
 import ochra.style as oxs
-from ochra.style.palette import ios
+from ochra.style import Palette
 
 cars = data.cars()
+names = ["USA", "Europe", "Japan"]
 # filter cars where origin is USA then select only the columns Horsepower and Miles_per_Gallon
 series = [
     list(cars[cars.Origin == origin][["Horsepower", "Miles_per_Gallon"]].itertuples(index=False))
-    for origin in ["USA", "Europe", "Japan"]
+    for origin in names
 ]
 
+nord = Palette.nord
+
 markers = [
-    ox.Marker.plus_mark(stroke=oxs.Stroke(ios[0])),
-    ox.Marker.x_mark(stroke=oxs.Stroke(ios[1])),
-    ox.Marker.polygon(3, stroke=oxs.Stroke(ios[2])),
+    ox.Marker.plus_mark(stroke=oxs.Stroke(nord.aurora[0])),
+    ox.Marker.x_mark(stroke=oxs.Stroke(nord.aurora[1])),
+    ox.Marker.polygon(3, stroke=oxs.Stroke(nord.aurora[2])),
 ]
 
 plot = oxp.Chart(
-    size=(300, 300),
-    x_axis=oxp.ContinuousAxis("Horsepower", (0, 240), major_ticks=np.linspace(0, 240, 13)),
+    size=(200, 200),
+    x_axis=oxp.ContinuousAxis("Horsepower", (0, 240), major_ticks=np.linspace(0, 240, 7)),
     y_axis=oxp.ContinuousAxis("Miles per gallon", (0, 50)),
     plots=[
-        oxp.ScatterPlot(data, marker=marker)
-        for data, color, marker in zip(series, ios, markers)
+        oxp.ScatterPlot(name, data, marker=marker)
+        for name, data, color, marker in zip(names, series, nord.colors, markers)
     ],
-    background=oxs.Fill(ios.gray6),
-    grid_stroke=oxs.Stroke(ios.gray5, width=1),
+    palette=nord
 )
 
-c = ox.Canvas([plot])
+c = ox.Canvas([plot.draw()])
 
-ox.to_svg_file(c, "test.svg")
+ox.save_svg(c, "test.svg", horizontal_padding=5, vertical_padding=5)

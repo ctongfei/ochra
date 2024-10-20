@@ -15,4 +15,4 @@ canvas = ox.Canvas(
     viewport=(ox.AxisAlignedRectangle((0, 0), (100, 30)))
 )
 
-ox.to_svg_file(canvas, "marker.svg")
+ox.save_svg(canvas, "marker.svg")

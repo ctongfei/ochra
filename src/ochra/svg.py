@@ -1,21 +1,11 @@
 import xml.etree.ElementTree as ET
 from typing import Dict
 
-from ochra import Transformation
-from ochra.canvas import Canvas, EmbeddedCanvas
-from ochra.conic import Circle, Ellipse
-from ochra.element import AnyTransformed, Element
-from ochra.group import Annotation, Group
-from ochra.mark import Mark
-from ochra.marker import Marker, MarkerConfig
-from ochra.parametric import Parametric
-from ochra.poly import Polygon, Polyline
-from ochra.segment import LineSegment
-from ochra.style.fill import Fill
-from ochra.style.font import Font
-from ochra.style.stroke import Dash, Stroke
+from ochra.core import *
+from ochra.functions import *
+from ochra.style import *
+from ochra.mark import *
 from ochra.text import Text
-from ochra.util.functions import f2s, rad_to_deg
 
 
 def dash_to_css(dash: Dash) -> Dict[str, str]:
@@ -25,6 +15,8 @@ def dash_to_css(dash: Dash) -> Dict[str, str]:
 
 
 def marker_config_to_css(marker: MarkerConfig) -> Dict[str, str]:
+    if marker is None:
+        return {}
     start = {} if marker.start is None else {"marker-start": f"url(#{marker.start.name})"}
     mid = {} if marker.mid is None else {"marker-mid": f"url(#{marker.mid.name})"}
     end = {} if marker.end is None else {"marker-end": f"url(#{marker.end.name})"}
@@ -57,7 +49,7 @@ def font_to_css(font: Font) -> Dict[str, str]:
     family = {"font-family": font.family}
     size = {} if font.size is None else {"font-size": str(font.size)}
     weight = {} if font.weight is None else {"font-weight": f2s(font.weight.weight)}
-    style = {} if font.style is None else {"font-style": font.style}
+    style = {} if font.style is None else {"font-style": str(font.style)}
     return {**family, **size, **weight, **style}
 
 
@@ -89,19 +81,19 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         return element_to_svg(c, e.canvas.translate(d.x, d.y))
     elif isinstance(e, Text):
         if e.angle != 0.0:
+            flip = scale((1, -1))
             return element_to_svg(
                 c,
                 AnyTransformed(
                     Text(e.text, e.bottom_left, angle=0.0, font=e.font),
-                    Transformation.rotate(e.angle, e.bottom_left)
+                    rotate(-e.angle, flip(e.bottom_left))
                 )
             )
         else:
             t = ET.Element(
-                "text",
-                x=f2s(e.bbox.bottom_left.x),
-                y=f2s(-e.bbox.bottom_left.y),
-                transform="scale(1 -1)",
+                "text.py",
+                x=f2s(e.visual_bbox().bottom_left.x),
+                y=f2s(-e.visual_bbox().bottom_left.y),
                 **font_to_css(e.font),
             )
             t.text = e.text
@@ -124,8 +116,8 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         )
     elif isinstance(e, Ellipse):
         rot = {
-            "transform": f"rotate({f2s(rad_to_deg(e.major_axis_angle))} {f2s(e.center.x)} {f2s(e.center.y)})"
-        } if e.major_axis_angle != 0 else {}
+            "transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"
+        } if e.angle != 0 else {}
         return ET.Element(
             "ellipse",
             cx=f2s(e.center.x),
@@ -136,6 +128,17 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             **stroke_to_css(e.stroke),
             **fill_to_css(e.fill),
         )
+    elif isinstance(e, Line):
+        intersection = intersect_line_aabb(e, c.viewport)
+        if intersection is None:
+            return ET.Element("group")
+        elif isinstance(intersection, Point):
+            # TODO: draw a dot?
+            pass
+        elif isinstance(intersection, list):
+            # TODO: consider the stroke width at the viewport border
+            p0, p1 = intersection
+            return element_to_svg(c, LineSegment(p0, p1, stroke=e.stroke))
     elif isinstance(e, LineSegment):
         return ET.Element(
             "line",
@@ -162,6 +165,25 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             **fill_to_css(e.fill),
             **marker_config_to_css(MarkerConfig(None, e.marker, None)),
         )
+    elif isinstance(e, QuadraticBezierCurve):
+        return ET.Element(
+            "path",
+            d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} Q {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}",
+            fill="none",
+            **stroke_to_css(e.stroke),
+        )
+    elif isinstance(e, QuadraticBezierPath):
+        parts = [
+            f"Q {f2s(e.mat[2*i+1, 0])} {f2s(e.mat[2*i+1, 1])}, {f2s(e.mat[2*i+2, 0])} {f2s(e.mat[2*i+2, 1])}"
+            for i in range(e.num_segments)
+        ]
+        return ET.Element(
+            "path",
+            d=f"M {f2s(e.mat[0, 0])} {f2s(e.mat[0, 1])} {' '.join(parts)}",
+            fill="none",
+            **stroke_to_css(e.stroke),
+            **marker_config_to_css(e.markers)
+        )
     elif isinstance(e, Parametric):
         return element_to_svg(c, e.approx_as_polyline())
     elif isinstance(e, Annotation):  # Materialize under the Ochra coordinate system
@@ -183,7 +205,7 @@ def marker_to_svg_def(c: Canvas, m: Marker) -> ET.Element:
         refY="0",
         viewBox=f"{v.bottom_left.x} {-v.bottom_left.y - v.height} {v.width} {v.height}",
     )
-    marker.extend([element_to_svg(c, e) for e in m.elements])
+    marker.extend([element_to_svg(c, e.scale(1, -1)) for e in m.elements])
     return marker
 
 
@@ -197,13 +219,14 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
         height=str(v.height)
     )
     symbol.extend([
-        element_to_svg(c, e.translate(-v.bottom_left.x, -v.bottom_left.y))
+        element_to_svg(c, e.scale(1, -1).translate(-v.bottom_left.x, -v.bottom_left.y))
         for e in m.elements
     ])  # Conform to SVG 1.1 standard, can't use refX, refY -- so have to move the elements
     return symbol
 
 
-def to_svg(c: Canvas) -> ET.Element:
+def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float = 0.0) -> ET.Element:
+    hp, vp = horizontal_padding, vertical_padding
     all = [
         element_to_svg(c, e.scale(1, -1))  # to SVG coordinate system
         for e in c.elements
@@ -219,9 +242,9 @@ def to_svg(c: Canvas) -> ET.Element:
     root = ET.Element(
         "svg",
         xmlns="http://www.w3.org/2000/svg",
-        width=str(c.viewport.width),
-        height=str(c.viewport.height),
-        viewBox=f"{c.viewport.bottom_left.x} {-c.viewport.bottom_left.y - c.viewport.height} {c.viewport.width} {c.viewport.height}"
+        width=str(c.viewport.width + 2 * hp),
+        height=str(c.viewport.height + 2 * vp),
+        viewBox=f"{c.viewport.bottom_left.x - hp} {-c.viewport.bottom_left.y - c.viewport.height - vp} {c.viewport.width + 2 * hp} {c.viewport.height + 2 * vp}"
     )
     defs = ET.Element("defs")
     defs.extend(all_markers)
@@ -231,8 +254,8 @@ def to_svg(c: Canvas) -> ET.Element:
     return root
 
 
-def to_svg_file(c: Canvas, path: str):
-    e = to_svg(c)
+def save_svg(c: Canvas, path: str, horizontal_padding: float = 0.0, vertical_padding: float = 0.0):
+    e = to_svg(c, horizontal_padding, vertical_padding)
     tree = ET.ElementTree(e)
     ET.indent(tree)
     tree.write(path, encoding="utf-8")

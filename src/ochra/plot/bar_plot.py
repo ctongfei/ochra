@@ -1,39 +1,43 @@
-from typing import Collection, Tuple, TYPE_CHECKING
+from typing import Collection, Tuple
 
-from ochra.element import Element
-from ochra.group import Group
+from ochra.core import Element, Group, Text
+from ochra.style import Font, Fill, Stroke
 from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
-from ochra.plot.typedef import X
-from ochra.style.fill import Fill
-from ochra.style.stroke import Stroke
-
-if TYPE_CHECKING:
-    from ochra.rect import AxisAlignedRectangle
+from ochra.plot.collections import X, Y
 
 
-class BarPlot(Plot[X, float]):
+class BarPlot(Plot[X, Y]):
 
     def __init__(self,
-                 data: Collection[Tuple[X, float, ...]],
+                 name: str,
+                 data: Collection[Tuple[X, Y, ...]],
                  stroke: Stroke = Stroke(),
                  bar_width: float = 1.0,  # TODO: better name
                  fill: Fill = Fill(),
                  ):
+        self.name = name
         self.data = data
         self.stroke = stroke
         self.bar_width = bar_width
         self.fill = fill
 
-    def draw(self, x_axis: Axis[X], y_axis: Axis[float]) -> Element:
-        return Group(
-            elements=[
-                AxisAlignedRectangle(
-                    (x_axis.locate(x) - self.bar_width / 2, 0),
-                    (x_axis.locate(x) + self.bar_width / 2, y_axis.locate(y)),
-                    stroke=self.stroke,
-                    fill=self.fill
-                )
-                for x, y in self.data
-            ]
-        )
+    def draw(self, x_axis: Axis[X], y_axis: Axis[Y]) -> Element:
+        from ochra.rect import AxisAlignedRectangle
+
+        def bar(t: tuple[X, Y, ...]) -> Element:
+            x, y = x_axis.locate(t[0]), y_axis.locate(t[1])
+            return AxisAlignedRectangle(
+                (x - self.bar_width / 2, 0),
+                (x + self.bar_width / 2, y),
+                stroke=self.stroke,
+                fill=self.fill
+            )
+
+        return Group([bar(t) for t in self.data])
+
+    def legend(self, font: Font) -> list[tuple[Element, Element]]:
+        size = font.extents.height
+        mark = AxisAlignedRectangle((0, 0), (size, size), fill=self.fill, stroke=self.stroke)
+        text = Text(self.name, (0, 0), font=font)
+        return [(mark, text)]

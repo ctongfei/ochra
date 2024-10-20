@@ -1,16 +1,27 @@
+import math
+
 import ochra as ox
-from ochra.util.functions import deg_to_rad
+from ochra.svg import save_svg
+from ochra.style import Palette
 
-t = ox.Text("hello world", bottom_left=(0, 0), angle=deg_to_rad(45))
-p = ox.Polygon.regular(3, circumradius=10).translate(60, 60).rotate(deg_to_rad(45), anchor=(60, 60))
+font = ox.style.Font('Linux Libertine', size=60)
+blue = ox.style.Stroke(Palette.ios.b)
+green = ox.style.Stroke(Palette.ios.g)
+red = ox.style.Stroke(Palette.ios.r)
 
-c = ox.Canvas(
-    elements=[
+t0 = ox.Text("Abg", (0, 70), font=font)
+t1 = ox.Text("\"", (0, 0), font=font)
+
+def text_anchors(t: ox.Text):
+    return ox.Group([
         t,
-        p,
-        t.axis_aligned_bbox(),
-        p.axis_aligned_bbox()
-    ],
-)
+        ox.Circle(1, t.visual_center(), stroke=red),
+        t.visual_bbox().with_stroke(blue),
+        t.aabb().with_stroke(green),
+    ])
 
-ox.to_svg_file(c, "test.svg")
+
+c = ox.Canvas([text_anchors(t0), text_anchors(t1)])
+
+save_svg(c, "test.svg", horizontal_padding=20, vertical_padding=20)
+

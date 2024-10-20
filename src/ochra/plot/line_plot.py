@@ -1,14 +1,12 @@
 from typing import Collection, Optional, Tuple
 
-from ochra.element import Element
-from ochra.group import Group
-from ochra.mark import Mark
-from ochra.marker import Marker
-from ochra.plane import Point
+from ochra.core import Element, Text, Group, Polyline
+from ochra.style import Font, Stroke
+from ochra.mark import Mark, Marker
+from ochra.geometry import Point
 from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
-from ochra.poly import Polyline
-from ochra.style.stroke import Stroke
+
 
 
 class LinePlot(Plot[float, float]):
@@ -16,10 +14,12 @@ class LinePlot(Plot[float, float]):
     Represents a line plot.
     """
     def __init__(self,
+                 name: str,
                  data: Collection[Tuple[float, float, ...]],
                  stroke: Stroke = Stroke(),
                  marker: Optional[Marker] = None,
                  ):
+        self.name = name
         self.data = data
         self.stroke = stroke
         self.marker = marker
@@ -27,7 +27,7 @@ class LinePlot(Plot[float, float]):
     def draw(self, x_axis: Axis[float], y_axis: Axis[float]) -> Element:
         points = sorted(
             [
-                Point(x_axis.locate(x), y_axis.locate(y))
+                Point.mk((x_axis.locate(x), y_axis.locate(y)))
                 for x, y, *_ in self.data
                 if x in x_axis and y in y_axis
             ],
@@ -50,3 +50,8 @@ class LinePlot(Plot[float, float]):
             ]
         )
 
+    def legend(self, font: Font) -> list[tuple[Element, Element]]:
+        size = font.extents.height
+        mark = Polyline([(0, 0), (size / 2, 0), (size, 0)], stroke=self.stroke, marker_mid=self.marker)
+        text = Text(self.name, (0, 0), font=font)
+        return [(mark, text)]

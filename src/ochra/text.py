@@ -1,79 +1,106 @@
-import tempfile
+from functools import cached_property
 
-from ochra.element import Element
-from ochra.plane import Point, PointI, Transformation
-from ochra.rect import AxisAlignedRectangle, Rectangle
-from ochra.style.font import Font
+from ochra.geometry import Point, PointI, Transformation, translate, rotate
+from ochra.core import Element, AnyTransformed, Rectangle, AxisAlignedRectangle
+from ochra.style import Font, TextExtents
 
 
 class Text(Element):
 
-    def __init__(self, text: str, bottom_left: PointI, angle: float = 0.0, font: Font = Font()):
+    def __init__(self, text: str, bottom_left: PointI, angle: float = 0.0,
+                 font: Font = Font()):
         self.text = text
         self.bottom_left = Point.mk(bottom_left)
         self.angle = angle
         self.font = font
-        self.bbox = self._get_bounding_box()
+        self.extents: TextExtents = _text_extents(self.text, self.font)
 
-    def _get_bounding_box(self) -> 'Rectangle':
-        import cairo
-
-        from ochra.util.cairo_utils import style_to_cairo, weight_to_cairo
-        surface = cairo.SVGSurface(
-            tempfile.mktemp(suffix=".svg"),
-            len(self.text) * self.font.size * 4,
-            self.font.size * 4
-        )
-        ctx = cairo.Context(surface)
-        ctx.set_font_size(self.font.size)
-        ctx.select_font_face(self.font.family, style_to_cairo(self.font.style), weight_to_cairo(self.font.weight))
-        extents = ctx.text_extents(self.text)
+    @cached_property
+    def _rotated_visual_bbox(self) -> 'Rectangle':
         rect = AxisAlignedRectangle(
-            Point(extents.x_bearing + self.bottom_left.x, -extents.y_bearing + self.bottom_left.y - extents.height),
-            Point(extents.x_bearing + self.bottom_left.x + extents.width, -extents.y_bearing + self.bottom_left.y)
-        ).rotate(self.angle, self.bottom_left)
+            Point.origin,
+            Point.mk((self.extents.x_advance, -self.extents.y_bearing))
+        ).rotate(self.angle).translate(self.bottom_left.x, self.bottom_left.y)
         return rect
+
+    @cached_property
+    def _rotated_actual_bbox(self) -> 'Rectangle':
+        rect = AxisAlignedRectangle(
+            Point.mk(self.extents.x_bearing,
+                     -self.extents.y_bearing - self.extents.height),
+            Point.mk(
+                (self.extents.x_bearing + self.extents.width, -self.extents.y_bearing))
+        ).rotate(self.angle).translate(self.bottom_left.x, self.bottom_left.y)
+        return rect
+
+    def visual_center(self) -> Point:
+        tr = translate(self.bottom_left.to_vector()) @ rotate(self.angle)
+        midpoint = Point.mk(self.extents.x_advance / 2, self.font.extents.x_height / 2)
+        return tr(midpoint)
+
+    def visual_bbox(self) -> 'AxisAlignedRectangle':
+        return self._rotated_visual_bbox.aabb()
 
     @property
     def center(self) -> Point:
-        bbox = self.bbox
+        bbox = self._rotated_visual_bbox
         return bbox.center
 
     @property
     def height(self) -> float:
-        return self.bbox.height
+        return self._rotated_visual_bbox.height
 
     @property
     def width(self) -> float:
-        return self.bbox.width
+        return self._rotated_visual_bbox.width
 
+    # TODO: use visual center
     @classmethod
-    def centered(cls, text: str, center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+    def centered(cls, text: str, center: PointI, angle: float = 0.0,
+                 font: Font = Font()) -> 'Text':
         center = Point.mk(center)
-        bbox = cls(text, Point.origin, angle, font).bbox
-        return cls(text, center - bbox.center.as_vector(), angle, font)
+        bbox = cls(text, Point.origin, angle, font)._rotated_visual_bbox
+        return cls(text, center - bbox.center.to_vector(), angle, font)
 
     @classmethod
-    def top_centered(cls, text: str, top_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+    def top_centered(cls, text: str, top_center: PointI, angle: float = 0.0,
+                     font: Font = Font()) -> 'Text':
         top_center = Point.mk(top_center)
-        bbox = cls(text, Point.origin, angle, font).bbox
-        return cls(text, top_center - bbox.top_center.as_vector(), angle, font)
+        bbox = cls(text, Point.origin, angle, font)._rotated_visual_bbox
+        return cls(text, top_center - bbox.top_center.to_vector(), angle, font)
 
     @classmethod
-    def right_centered(cls, text: str, right_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+    def right_centered(cls, text: str, right_center: PointI, angle: float = 0.0,
+                       font: Font = Font()) -> 'Text':
         right_center = Point.mk(right_center)
-        bbox = cls(text, Point.origin, angle, font).bbox
-        return cls(text, right_center - bbox.right_center.as_vector(), angle, font)
+        bbox = cls(text, Point.origin, angle, font)._rotated_visual_bbox
+        return cls(text, right_center - bbox.right_center.to_vector(), angle, font)
 
     @classmethod
-    def bottom_centered(cls, text: str, bottom_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
+    def bottom_centered(cls, text: str, bottom_center: PointI, angle: float = 0.0,
+                        font: Font = Font()) -> 'Text':
         bottom_center = Point.mk(bottom_center)
-        bbox = cls(text, Point.origin, angle, font).bbox
-        return cls(text, bottom_center - bbox.bottom_center.as_vector(), angle, font)
+        bbox = cls(text, Point.origin, angle, font)._rotated_visual_bbox
+        return cls(text, bottom_center - bbox.bottom_center.to_vector(), angle, font)
+
+    @classmethod
+    def left_centered(cls, text: str, left_center: PointI, angle: float = 0.0,
+                      font: Font = Font()) -> 'Text':
+        left_center = Point.mk(left_center)
+        bbox = cls(text, Point.origin, angle, font)._rotated_visual_bbox
+        return cls(text, left_center - bbox.left_center.to_vector(), angle, font)
 
     def translate(self, dx: float, dy: float) -> 'Text':
-        tr = Transformation.translate((dx, dy))
+        tr = translate((dx, dy))
         return Text(self.text, tr(self.bottom_left), self.angle, self.font)
 
-    def axis_aligned_bbox(self) -> AxisAlignedRectangle:
-        return self.bbox.axis_aligned_bbox()
+    def transform(self, f: Transformation) -> 'Element':
+        t, r, s = f.decompose()
+        if s.scale_if_scaling() == (1, 1):
+            return Text(self.text, t(self.bottom_left),
+                        self.angle + r.angle_if_rotation(), self.font)
+        else:
+            return AnyTransformed(self, f)
+
+    def aabb(self) -> AxisAlignedRectangle:
+        return self._rotated_actual_bbox.aabb()

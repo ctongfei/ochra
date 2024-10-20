@@ -20,14 +20,15 @@ plot = oxp.Chart(
     x_axis=oxp.ContinuousAxis("x", (0, 10)),
     y_axis=oxp.ContinuousAxis("y", (0, 10)),
     plots=[
-        oxp.LinePlot(data, stroke=oxs.Stroke(color=color))
+        oxp.LinePlot("sine", data, stroke=oxs.Stroke(color=color))
         for data, color in zip(data_series, ios)
     ],
-    background=oxs.Fill(ios.gray6),
-    grid_stroke=oxs.Stroke(ios.gray5, width=1),
-    font=oxs.Font('Monaco')
+    background=oxs.Fill(ios.lightgray6),
+    grid_stroke=oxs.Stroke(ios.lightgray5, width=1),
+    font=oxs.Font('Monaco'),
+    palette=ios
 )
 
-c = ox.Canvas(elements=[plot])
+c = ox.Canvas(elements=[plot.draw()])
 
-ox.to_svg_file(c, "test.svg")
+ox.save_svg(c, "test.svg")

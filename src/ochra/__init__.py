@@ -1,18 +1,7 @@
-from . import plot, style
-from .canvas import Canvas, EmbeddedCanvas
-from .conic import Circle, Conic, Ellipse
-from .element import Element
-from .graph import FunctionGraph
-from .group import Group
-from .line import HorizontalLine, Line, VerticalLine
-from .mark import Mark
-from .marker import Marker, MarkerConfig, MarkerOrientation
-from .plane import Point, Transformation, Vector
-from .poly import Polygon, Polyline
-from .rect import AxisAlignedRectangle, Rectangle
-from .rendering.svg import to_svg, to_svg_file
-from .segment import LineSegment
-from .text import Text
+from .geometry import *
+from .core import *
+from .mark import *
+
 
 __all__ = [
     'plot',
@@ -31,7 +20,6 @@ __all__ = [
     'Mark',
     'Marker',
     'MarkerConfig',
-    'MarkerOrientation',
     'Point',
     'Transformation',
     'Vector',
@@ -40,7 +28,10 @@ __all__ = [
     'AxisAlignedRectangle',
     'Rectangle',
     'to_svg',
-    'to_svg_file',
+    'save_svg',
     'LineSegment',
     'Text',
+    'Table',
+    'QuadraticBezierCurve'
 ]
+
