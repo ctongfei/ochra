@@ -29,7 +29,7 @@ def _arrow_triangle_base(size: float, angle: float, **kwargs):
             Point.polar(size, math.tau / 2 + angle)
         ],
         **kwargs
-    ).translate(-size, 0)  # center at arrow tip
+    ).Translation(-size, 0)  # center at arrow tip
 
 
 def arrow_triangle(size: float = 5.0, angle: float = math.degrees(30), **kwargs):

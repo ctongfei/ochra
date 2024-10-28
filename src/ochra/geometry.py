@@ -1,6 +1,5 @@
 import math
-from dataclasses import dataclass
-from typing import Tuple, TypeAlias
+from typing import Tuple, TypeAlias, TYPE_CHECKING
 
 import numpy as np
 import jax
@@ -8,9 +7,15 @@ import jax.numpy as jnp
 import jax_dataclasses as jdc
 
 from ochra.util import Global, classproperty
+if TYPE_CHECKING:
+    from ochra.core import Line
 
+
+τ = 6.283185307179586
+"""The true circle constant, the ratio of a circle's circumference to its radius."""
 
 Scalar: TypeAlias = float | jax.Array
+"""A scalar value, which can be a float or a Jax array of dimensionality 0."""
 
 
 @jdc.pytree_dataclass
@@ -46,6 +51,9 @@ class Vector:
 
     def __abs__(self) -> Scalar:
         return jnp.linalg.norm(self.vec)
+
+    def dot(self, v: 'Vector') -> Scalar:
+        return jnp.dot(self.vec, v.vec)
 
     def norm(self) -> Scalar:
         return abs(self)
@@ -191,21 +199,22 @@ class ProjPoint:
         return False
 
 
-@jdc.pytree_dataclass
 class Transformation:
     """
     Represents a 2D affine transformation.
     """
-    matrix: jax.Array
-
-    def __post_init__(self):
+    def __init__(self, matrix: jax.Array):
         """
         :param matrix: 3x3 matrix representing affine transformation.
         """
-        assert self.matrix.shape == (3, 3)
+        assert matrix.shape == (3, 3)
+        self.matrix = matrix
 
     def __matmul__(self, other):
-        return Transformation(self.matrix @ other.matrix)
+        if isinstance(other, CompositeTransformation):
+            return CompositeTransformation([self] + other.transformations)
+        else:
+            return CompositeTransformation([self, other])
 
     def __call__(self, point: Point):
         pp = self.matrix @ jnp.concat([point.loc, jnp.array([1])])
@@ -244,7 +253,7 @@ class Transformation:
         sy = math.hypot(c, d)
         rotation = jnp.eye(3).at[:2, 0].set(m[:2, 0] / sx).at[:2, 1].set(m[:2, 1] / sy)
         return Transformation(translation), Transformation(
-            rotation), scale((sx, sy))
+            rotation), Scaling((sx, sy))
 
     def is_identity(self):
         return jnp.allclose(self.matrix, jnp.eye(3))
@@ -257,46 +266,99 @@ class Transformation:
         return cls(jnp.eye(3))
 
 
-def translate(d: VectorI):
-    d = Vector.mk(d)
-    return Transformation(jnp.array([
-        [1, 0, d.x],
-        [0, 1, d.y],
-        [0, 0, 1]
-    ]))
+class CompositeTransformation(Transformation):
+    def __init__(self, transformations: list[Transformation]):
+        matrix = jnp.eye(3)
+        for t in transformations:
+            matrix = matrix @ t.matrix
+        super().__init__(matrix)
+        self.transformations = transformations
+
+    def __matmul__(self, other):
+        if isinstance(other, CompositeTransformation):
+            return CompositeTransformation(self.transformations + other.transformations)
+        else:
+            return CompositeTransformation(self.transformations + [other])
 
 
-def rotate(θ: Scalar, center: PointI = Point.origin):
-    c, s = jnp.cos(θ), jnp.sin(θ)
-    rot = Transformation(jnp.array([
-        [c, -s, 0],
-        [s, c, 0],
-        [0, 0, 1]
-    ]))
-    if center == Point.origin:
-        return rot
-    else:
-        v = center.to_vector()
-        return translate(v) @ rot @ translate(-v)
+class Translation(Transformation):
+    def __init__(self, d: VectorI):
+        d = Vector.mk(d)
+        super().__init__(jnp.array([
+            [1, 0, d.x],
+            [0, 1, d.y],
+            [0, 0, 1]
+        ]))
+        self.vec = d
+
+    def inverse(self):
+        return Translation(-self.vec)
+
+    def __matmul__(self, other):
+        if isinstance(other, Translation):
+            return Translation(self.vec + other.vec)
+        return super().__matmul__(other)
 
 
-def scale(s: VectorI, center: Point = Point.origin):
-    s = Vector.mk(s)
-    sc = Transformation(jnp.diag(jnp.concat([s.vec, jnp.array([1])])))
-    if center == Point.origin:
-        return sc
-    else:
-        v = center.to_vector()
-        return translate(v) @ sc @ translate(-v)
+class Rotation(Transformation):
+    def __init__(self, θ: Scalar):
+        super().__init__(jnp.array([
+            [math.cos(θ), -math.sin(θ), 0],
+            [math.sin(θ), math.cos(θ), 0],
+            [0, 0, 1]
+        ]))
+        self.angle = θ
+
+    def __matmul__(self, other):
+        if isinstance(other, Rotation):
+            return Rotation(self.angle + other.angle)
+        return super().__matmul__(other)
+
+    def inverse(self):
+        return Rotation(-self.angle)
+
+    @classmethod
+    def centered(cls, θ: Scalar, center: PointI):
+        if center == Point.origin:
+            return cls(θ)
+        else:
+            v = center.to_vector()
+            return CompositeTransformation([Translation(v), cls(θ), Translation(-v)])
 
 
-def reflect(line: LineI):
-    a, b, c = line
-    d = math.hypot(a, b)
-    a, b, c = a / d, b / d, c / d
-    refl = Transformation(jnp.array([
-        [1 - 2 * a ** 2, -2 * a * b, -2 * a * c],
-        [-2 * a * b, 1 - 2 * b ** 2, -2 * b * c],
-        [0, 0, 1]
-    ]))
-    return refl
+class Scaling(Transformation):
+    def __init__(self, s: VectorI):
+        s = Vector.mk(s)
+        super().__init__(jnp.diag(jnp.concat([s.vec, jnp.array([1])])))
+        self.scale = s
+
+    def __matmul__(self, other):
+        if isinstance(other, Scaling):
+            return Scaling(Vector(self.scale.vec * other.scale.vec))
+        return super().__matmul__(other)
+
+    @classmethod
+    def centered(cls, s: VectorI, center: Point = Point.origin):
+        s = Vector.mk(s)
+        sc = cls(s)
+        if center == Point.origin:
+            return sc
+        else:
+            v = center.to_vector()
+            return Translation(v) @ sc @ Translation(-v)
+
+
+class Reflection(Transformation):
+    def __init__(self, line: 'LineI | Line'):
+        if isinstance(line, Line):
+            a, b, c = line.coef
+        else:
+            a, b, c = line
+        d = math.hypot(a, b)
+        a, b, c = a / d, b / d, c / d
+        super().__init__(jnp.array([
+            [1 - 2 * a ** 2, -2 * a * b, -2 * a * c],
+            [-2 * a * b, 1 - 2 * b ** 2, -2 * b * c],
+            [0, 0, 1]
+        ]))
+        self.line = line

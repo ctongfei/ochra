@@ -1,6 +1,6 @@
 from collections.abc import Collection
 from enum import Enum
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 from dataclasses import dataclass
 
 from ochra.core import Group, Element, Canvas, Circle, LineSegment, AxisAlignedRectangle, Polygon
@@ -109,8 +109,7 @@ class MarkerConfig:
     end: Optional[Marker] = None
 
 
-
-class Mark(Element):  # should probably be Annotation
+class Mark(Element):  # TODO: should probably be Annotation
 
     def __init__(self, point: PointI, marker: Marker):
         self.point = Point.mk(point)

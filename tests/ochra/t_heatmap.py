@@ -1,6 +1,5 @@
 import ochra as ox
 import ochra.plot as oxp
-import ochra.style as oxs
 from ochra.style.palette import nord
 from ochra.style.colormap import viridis
 

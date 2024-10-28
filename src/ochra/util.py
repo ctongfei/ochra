@@ -2,8 +2,8 @@ class Global:
     """
     Global settings for drawing.
     """
-    approx_eps: float = 1e-4
-    boundary_eps: float = 1e-6
+    approx_eps: float = 2 ** -12
+    boundary_eps: float = 2 ** -16
     step_size: float = 4.0
     num_first_order_steps: int = 256
     num_second_order_steps: int = 64
@@ -45,5 +45,3 @@ class classproperty:
     def getter(self, method):
         self.fget = method
         return self
-
-

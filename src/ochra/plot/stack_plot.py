@@ -4,7 +4,7 @@ import numpy as np
 
 from ochra.core import Element, AxisAlignedRectangle, Group, Polygon
 from ochra.plot import Plot, Axis
-from ochra.style import Fill, Stroke, Palette, Font
+from ochra.style import Fill, Stroke, Palette
 
 
 class StackPlot(Plot[float, float]):

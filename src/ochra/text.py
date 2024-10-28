@@ -1,6 +1,6 @@
 from functools import cached_property
 
-from ochra.geometry import Point, PointI, Transformation, translate, rotate
+from ochra.geometry import Point, PointI, Transformation, Translation, Rotation
 from ochra.core import Element, AnyTransformed, Rectangle, AxisAlignedRectangle
 from ochra.style import Font, TextExtents
 
@@ -34,7 +34,7 @@ class Text(Element):
         return rect
 
     def visual_center(self) -> Point:
-        tr = translate(self.bottom_left.to_vector()) @ rotate(self.angle)
+        tr = Translation(self.bottom_left.to_vector()) @ Rotation(self.angle)
         midpoint = Point.mk(self.extents.x_advance / 2, self.font.extents.x_height / 2)
         return tr(midpoint)
 
@@ -91,7 +91,7 @@ class Text(Element):
         return cls(text, left_center - bbox.left_center.to_vector(), angle, font)
 
     def translate(self, dx: float, dy: float) -> 'Text':
-        tr = translate((dx, dy))
+        tr = Translation((dx, dy))
         return Text(self.text, tr(self.bottom_left), self.angle, self.font)
 
     def transform(self, f: Transformation) -> 'Element':

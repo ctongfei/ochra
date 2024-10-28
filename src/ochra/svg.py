@@ -1,11 +1,25 @@
 import xml.etree.ElementTree as ET
-from typing import Dict
+from typing import Dict, ContextManager
 
 from ochra.core import *
 from ochra.functions import *
 from ochra.style import *
 from ochra.mark import *
 from ochra.text import Text
+
+
+class Session(ContextManager):
+
+    def __init__(self):
+        pass
+
+    def __enter__(self):
+        Marker.all_named_markers = {}
+        Marker.all_named_symbols = {}
+
+    def __exit__(self, __exc_type, __exc_value, __traceback):
+        Marker.all_named_markers = {}
+        Marker.all_named_symbols = {}
 
 
 def dash_to_css(dash: Dash) -> Dict[str, str]:
@@ -77,16 +91,17 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         g.append(element_to_svg(c, e.element))
         return g
     elif isinstance(e, EmbeddedCanvas):
+        # TODO: clipping
         d = e.left_bottom - c.viewport.bottom_left
         return element_to_svg(c, e.canvas.translate(d.x, d.y))
     elif isinstance(e, Text):
         if e.angle != 0.0:
-            flip = scale((1, -1))
+            flip = Scaling((1, -1))
             return element_to_svg(
                 c,
                 AnyTransformed(
                     Text(e.text, e.bottom_left, angle=0.0, font=e.font),
-                    rotate(-e.angle, flip(e.bottom_left))
+                    Rotation.centered(-e.angle, flip(e.bottom_left))
                 )
             )
         else:
@@ -136,9 +151,12 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             # TODO: draw a dot?
             pass
         elif isinstance(intersection, list):
-            # TODO: consider the stroke width at the viewport border
             p0, p1 = intersection
-            return element_to_svg(c, LineSegment(p0, p1, stroke=e.stroke))
+            θ = LineSegment(p0, p1).angle
+            d = Vector.unit(θ) * (e.stroke.width or 1.0)  # should * 0.5, but be conservative
+            if (p1 - p0).dot(d) < 0:
+                d = -d
+            return element_to_svg(c, LineSegment(p0 - d, p1 + d, stroke=e.stroke))
     elif isinstance(e, LineSegment):
         return ET.Element(
             "line",

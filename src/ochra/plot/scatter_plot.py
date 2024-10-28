@@ -1,4 +1,4 @@
-from typing import Callable, Collection, Optional, Tuple
+from typing import Collection, Tuple
 
 from ochra.core import Element, Group, Text
 from ochra.mark import Mark, Marker

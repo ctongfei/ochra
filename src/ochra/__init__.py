@@ -21,17 +21,13 @@ __all__ = [
     'Marker',
     'MarkerConfig',
     'Point',
+    'ProjPoint',
     'Transformation',
     'Vector',
     'Polygon',
     'Polyline',
     'AxisAlignedRectangle',
     'Rectangle',
-    'to_svg',
-    'save_svg',
     'LineSegment',
-    'Text',
-    'Table',
     'QuadraticBezierCurve'
 ]
-

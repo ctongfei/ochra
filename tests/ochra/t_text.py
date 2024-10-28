@@ -1,4 +1,3 @@
-import math
 
 import ochra as ox
 from ochra.svg import save_svg

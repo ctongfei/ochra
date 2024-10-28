@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
-import bisect
 from collections.abc import Callable, Collection, Iterator, Sequence
+from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain
 from typing import Optional, TYPE_CHECKING, Self
@@ -9,9 +9,11 @@ import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 
-from ochra.geometry import *
-from ochra.style import Stroke, Fill, Font, _text_extents, TextExtents
-from ochra.functions import lerp, lerp_point, dist, aligned_bbox_from_points, \
+from ochra.util import Global, classproperty
+from ochra.geometry import τ, Scalar, Point, PointI, ProjPoint, Vector, VectorI, LineI, Transformation, Translation, Rotation, Scaling, \
+    Reflection, ConicI
+from ochra.style import Stroke, Fill
+from ochra.functions import lerp, lerp_point, dist, aligned_bbox_from_points, aligned_bbox_from_bboxes, \
     solve_quadratic
 
 if TYPE_CHECKING:
@@ -23,7 +25,7 @@ class Element(ABC):
     Base class for all drawable elements.
     """
 
-    def transform(self, f: Transformation) -> Self:
+    def transform(self, f: Transformation) -> 'Element':
         """
         Transforms this element using the given transformation.
         Should be overridden by subclasses if possible.
@@ -35,6 +37,7 @@ class Element(ABC):
     def aabb(self) -> 'AxisAlignedRectangle | None':
         """
         Returns the axis-aligned bounding box of this element.
+        Should always be overridden by subclasses.
         None if the bounding box is not defined in the case that the element is infinite.
         """
         raise NotImplementedError(f"aabb() is not implemented for type {type(self)}.")
@@ -43,56 +46,69 @@ class Element(ABC):
         """
         Returns the visual center of this element.
         This is not necessarily the same as the geometric center.
-        For example, for text.py, the visual center should be placed at the center of the
-        x-height of the text.py, instead of the real height including ascenders and descenders.
+        For example, for text, the visual center should be placed at the center of the
+        x-height of the text, instead of the real height including ascenders and descenders.
         """
-        return self.aabb().center
+        aabb = self.aabb()
+        assert aabb is not None
+        return aabb.center
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
         """
         Returns the visual bounding box of this element.
         This is not necessarily the same as the geometric bounding box.
-        For example, for text.py, the visual bounding box should be placed at the baseline of the text.py.
+        For example, for text, the visual bounding box should be placed at the baseline of the text.
         """
-        return self.aabb()
+        aabb = self.aabb()
+        assert aabb is not None
+        return aabb
 
-    def translate(self, dx: float, dy: float) -> Self:
-        return self.transform(translate((dx, dy)))
+    def translate(self, dx: float, dy: float) -> 'Element':
+        return self.transform(Translation((dx, dy)))
 
-    def rotate(self, angle: float, anchor: PointI = Point.origin) -> Self:
-        return self.transform(rotate(angle, Point.mk(anchor)))
+    def rotate(self, angle: float, anchor: PointI = Point.origin) -> 'Element':
+        return self.transform(Rotation.centered(angle, Point.mk(anchor)))
 
-    def scale(self, sx: float, sy: float) -> Self:
-        return self.transform(scale(Vector.mk((sx, sy))))
+    def scale(self, sx: float, sy: float, anchor: PointI = Point.origin) -> 'Element':
+        return self.transform(Scaling.centered((sx, sy), Point.mk(anchor)))
 
-    def reflect(self, axis: LineI) -> Self:
-        return self.transform(reflect(axis))
+    def reflect(self, axis: LineI) -> 'Element':
+        return self.transform(Reflection(axis))
 
 
 class AnyTransformed(Element):
+    """
+    Fallback class for transformed elements.
+    At rendering time, objects of this class will be rendered by the SVG transform attribute.
+    """
+
     def __init__(self, element: Element, transformation: Transformation):
         self.element = element
         self.transformation = transformation
 
-    def transform(self, f: Transformation) -> Self:
+    def transform(self, f: Transformation) -> 'AnyTransformed':
         return AnyTransformed(self.element, f @ self.transformation)
 
-    def aabb(self) -> 'Optional[AxisAlignedRectangle]':
-        return self.element.aabb().transform(self.transformation).aabb()
+    def aabb(self) -> 'AxisAlignedRectangle | None':
+        old_bbox = self.element.aabb()
+        if old_bbox is None:
+            return None
+        return old_bbox.transform(self.transformation).aabb()
 
 
 class Group(Element):
+    """
+    Represents a group of elements.
+    """
 
     def __init__(self, elements: Collection[Element]):
         self.elements = elements
 
     def aabb(self) -> 'AxisAlignedRectangle':
-        from ochra.functions import aligned_bbox_from_bboxes
         bboxes = [e.aabb() for e in self.elements]
         return aligned_bbox_from_bboxes(bboxes)
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
-        from ochra.functions import aligned_bbox_from_bboxes
         bboxes = [e.visual_bbox() for e in self.elements]
         return aligned_bbox_from_bboxes(bboxes)
 
@@ -103,7 +119,7 @@ class Group(Element):
             else:
                 yield e
 
-    def transform(self, f: Transformation) -> Self:
+    def transform(self, f: Transformation) -> 'Group':
         new_elements = [e.transform(f) for e in self.elements]
         return Group(new_elements)
 
@@ -127,7 +143,7 @@ class Annotation(Element):
     def materialize(self) -> Element:
         return self.materialize_at(self.anchor)
 
-    def transform(self, f: Transformation) -> Self:
+    def transform(self, f: Transformation) -> 'Annotation':
         return Annotation(f(self.anchor), self.materialize_at)
 
 
@@ -137,7 +153,7 @@ class Parametric(Element):
     """
 
     @property
-    def pieces(self) -> Sequence[Tuple[float, float]]:
+    def pieces(self) -> Sequence[tuple[float, float]]:
         """
         Returns the sequence of continuous pieces of the parameterization.
         Defaults to a single piece from 0 to 1, which says that the whole element is continuous.
@@ -180,7 +196,7 @@ class Parametric(Element):
         for p in self.pieces:
             ts = jnp.linspace(p[0], p[1], num_samples_per_piece)
             ts = ts.at[0].set(p[0] + boundary_eps).at[-1].set(p[1] - boundary_eps)
-            pl = Polyline([self.at(t) for t in ts], stroke=stroke)
+            pl = Polyline([self.at(t) for t in ts], stroke=stroke or Stroke())
             pls.append(pl)
 
         if len(pls) == 1:
@@ -236,6 +252,9 @@ class Parametric(Element):
         return JoinedParametric(shapes)
 
 
+#TODO: ParametricSlice
+
+
 class ParametricFromFunction(Parametric):
     """
     Represents a shape defined by a function.
@@ -248,22 +267,21 @@ class ParametricFromFunction(Parametric):
     def at(self, t: Scalar) -> Point:
         return self.func(t)
 
-    def transform(self, f: Transformation) -> Self:
+    def transform(self, f: Transformation) -> Parametric:
         return ParametricFromFunction(lambda t: f(self.func(t)), stroke=self.stroke)
 
 
 class JoinedParametric(Group, Parametric):
-    def __new__(cls, shapes: Sequence[Parametric]):
-        self = super().__new__(cls)
+    def __init__(self, shapes: Sequence[Parametric]):
+        super().__init__(shapes)
         self.shapes = shapes
-        return self
 
     @property
-    def pieces(self) -> Sequence[Tuple[float, float]]:
+    def pieces(self) -> Sequence[tuple[float, float]]:
         n = len(self.shapes)
         return [(i / n, (i + 1) / n) for i in range(n)]
 
-    def at(self, t: float) -> Point:
+    def at(self, t: Scalar) -> Point:
         n = len(self.shapes)
         if t == 1.0:
             return self.shapes[-1].at(1.0)
@@ -272,7 +290,7 @@ class JoinedParametric(Group, Parametric):
             t0 = t * n - i
             return self.shapes[i].at(t0)
 
-    def transform(self, f: Transformation) -> Self:
+    def transform(self, f: Transformation) -> 'JoinedParametric':
         return JoinedParametric([s.transform(f) for s in self.shapes])
 
 
@@ -314,7 +332,7 @@ class Implicit(ABC):
         return g.normalize()
 
     def _tangent_vector_at_point(self, p: Point):
-        return self._normal_vector_at_point(p).rotate(math.tau / 4)
+        return self._normal_vector_at_point(p).rotate(τ / 4)
 
     def _get_point(self, p0: Point, eps: float = Global.approx_eps):
         dist = float('inf')
@@ -409,7 +427,6 @@ class EmbeddedCanvas(Group):
         super().__init__(elements=[
             canvas.translate(self.left_bottom.x, self.left_bottom.y)
         ])
-
 
 
 class Line(Parametric, Implicit):
@@ -596,7 +613,7 @@ class LineSegment(Parametric):
 
     @property
     def angle(self):
-        return math.atan2(self.p1.y - self.p0.y, self.p1.x - self.p0.x)
+        return jnp.atan2(self.p1.y - self.p0.y, self.p1.x - self.p0.x)
 
     @property
     def length(self):
@@ -608,7 +625,7 @@ class LineSegment(Parametric):
     def as_vector(self) -> Vector:
         return Vector(self.p1.x - self.p0.x, self.p1.y - self.p0.y)
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         return lerp_point(self.p0, self.p1, t)
 
     def __contains__(self, p: Point):
@@ -626,7 +643,6 @@ class LineSegment(Parametric):
             Point.mk(max(self.p0.x, self.p1.x), max(self.p0.y, self.p1.y))
         )
 
-
     def transform(self, f: Transformation) -> 'LineSegment':
         return LineSegment(
             f(self.p0), f(self.p1),
@@ -634,7 +650,6 @@ class LineSegment(Parametric):
             marker_start=self.marker_start,
             marker_end=self.marker_end
         )
-
 
 
 class Polyline(Parametric):
@@ -716,7 +731,7 @@ class Polygon(Parametric):
         from ochra.functions import aligned_bbox_from_points
         return aligned_bbox_from_points(self.vertices)
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         if t == 1.0:
             return self.vertices[0]
         x = t * self.num_vertices
@@ -851,7 +866,7 @@ class Rectangle(Polygon, Parametric):
         )
 
     def rotate(self, angle: float, anchor: PointI = Point.origin) -> 'Rectangle':
-        rot = rotate(angle, anchor)
+        rot = Rotation.centered(angle, anchor)
         return Rectangle(
             rot(self.bottom_left),
             rot(self.top_right),
@@ -938,6 +953,23 @@ class Conic(Parametric):
                 # ellipse
                 pass
 
+    @classmethod
+    def from_focus_and_directrix(cls, focus: PointI, directrix: Line, eccentricity: float, **kwargs):
+        """
+        Defines a conic section from its focus, directrix, and eccentricity.
+        """
+        a, b, c = directrix.coef
+        e = eccentricity
+        p, q = Point.mk(focus).loc
+        A = (a * a + b * b) - e * e * a * a
+        B = -2 * e * e * a * b
+        C = (b * b + a * a) - e * e * b * b
+        D = -2 * p * (a * a + b * b) - 2 * e * e * a * c
+        E = -2 * q * (b * b + a * a) - 2 * e * e * b * c
+        F = (p * p + q * q) * (a * a + b * b) + 2 * e * e * c * c
+        return cls((A, B, C, D, E, F), **kwargs)
+
+
 
 class Ellipse(Conic, Parametric):
 
@@ -954,7 +986,7 @@ class Ellipse(Conic, Parametric):
         )
         if self.angle < 0.0:
             self.angle = -self.angle
-        t = (translate(self.center.loc) @ rotate(self.angle)).matrix
+        t = (Translation(self.center.loc) @ Rotation(self.angle)).matrix
         m = t.T @ self.proj_matrix @ t
         self.a = jnp.sqrt(-m[2, 2] / m[0, 0])
         self.b = jnp.sqrt(-m[2, 2] / m[1, 1])
@@ -987,7 +1019,7 @@ class Ellipse(Conic, Parametric):
             [0, a * a, 0],
             [0, 0, -a * a * b * b],
         ])
-        t = (translate(center.loc) @ rotate(θ)).inverse().matrix
+        t = (Translation(center.loc) @ Rotation(θ)).inverse().matrix
         m = t.T @ m0 @ t
         return cls(m, stroke=stroke, fill=fill)
 
@@ -1029,8 +1061,8 @@ class Ellipse(Conic, Parametric):
         p = Point.mk(p)
         return dist(self.focus0, p) + dist(self.focus1, p) <= self.a * 2
 
-    def at(self, t: float):
-        θ = t * math.tau
+    def at(self, t: Scalar):
+        θ = t * τ
         φ = self.angle
         x = self.center.x + self.a * jnp.cos(θ) * jnp.cos(φ) - self.b * jnp.sin(θ) * jnp.sin(φ)
         y = self.center.y + self.b * jnp.sin(θ) * jnp.cos(φ) + self.a * jnp.cos(θ) * jnp.sin(φ)
@@ -1048,7 +1080,7 @@ class Circle(Ellipse, Parametric):
 
     def __init__(self, radius: float, center: PointI = (0, 0), stroke: Stroke = Stroke(), fill: Fill = Fill()):
         center = Point.mk(center)
-        tr = translate(center.loc)
+        tr = Translation(center.loc)
         std_matrix = jnp.diag(jnp.array([1, 1, -radius ** 2]))
         matrix = tr.inverse().matrix.T @ std_matrix @ tr.matrix
         super().__init__(matrix, stroke=stroke, fill=fill)
@@ -1088,9 +1120,18 @@ class Arc(Parametric):
         self.end = end
         self.stroke = stroke
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         return self.ellipse.at(lerp(self.start, self.end, t))
 
+
+class Hyperbola(Conic, Parametric):
+    pass
+
+
+class Parabola(Conic, Parametric):
+
+    def slice(self, t0: Scalar, t1: Scalar) -> QuadraticBezierCurve:
+        pass
 
 
 class QuadraticBezierCurve(Parametric):
@@ -1112,7 +1153,7 @@ class QuadraticBezierCurve(Parametric):
     def p2(self) -> Point:
         return Point(self.mat[2, :])
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         s = 1 - t
         v = jnp.array([s * s, 2 * s * t, t * t])
         return Point(self.mat.T @ v)
@@ -1152,9 +1193,15 @@ class QuadraticBezierPath(Parametric):
     def points(self) -> Sequence[Point]:
         return [Point(self.mat[i, :]) for i in range(0, self.mat.shape[0], 2)]
 
+    def bezier_segments(self) -> Sequence[QuadraticBezierCurve]:
+        return [
+            QuadraticBezierCurve(self.mat[i:i + 3, :])
+            for i in range(0, self.mat.shape[0], 2)
+        ]
+
     def aabb(self) -> 'AxisAlignedRectangle | None':
         # TODO: not correct
-        return aligned_bbox_from_points(self.points())
+        return al
 
     def at(self, t: float):
         if t == 1.0:
@@ -1170,32 +1217,11 @@ class QuadraticBezierPath(Parametric):
 
 
 class CubicBezierCurve(Parametric):
-
-    def __init__(self, p0: PointI, p1: PointI, p2: PointI, p3: PointI, stroke: Stroke = Stroke()):
-        self.p0 = Point.mk(p0)
-        self.p1 = Point.mk(p1)
-        self.p2 = Point.mk(p2)
-        self.p3 = Point.mk(p3)
-        self.stroke = stroke
-
-    def at(self, t: float):
-        f = lambda x, y: lerp_point(x, y, t)
-        return f(
-            f(
-                f(self.p0, self.p1),
-                f(self.p1, self.p2)
-            ),
-            f(
-                f(self.p1, self.p2),
-                f(self.p2, self.p3)
-            )
-        )
-
-    def transform(self, f: Transformation) -> 'CubicBezierCurve':
-        return CubicBezierCurve(f(self.p0), f(self.p1), f(self.p2), f(self.p3), stroke=self.stroke)
+    pass
 
 
-
+class CubicBezierPath(Parametric):
+    pass
 
 
 def intersect_interval_interval(i0: tuple[float, float], i1: tuple[float, float]) -> tuple[float, float] | float | None:
@@ -1301,7 +1327,6 @@ def intersect_line_aabb(l: Line, aabb: AxisAlignedRectangle) -> Point | list[Poi
     else:
         ps = [intersect_line_segment(l, s) for s in aabb.edges]
         return [p for p in ps if p is not None]
-    raise ValueError("Should never happen.")
 
 
 def get_quadratic_bezier_curve_control_point_by_tangent(
