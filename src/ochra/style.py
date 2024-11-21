@@ -12,6 +12,9 @@ from ochra._matplotlib_colormaps import _viridis_data, _magma_data, _inferno_dat
 
 @dataclass
 class Color:
+    """
+    A color in RGBA space. Each component is in the range [0, 1].
+    """
     r: float
     g: float
     b: float
@@ -47,8 +50,11 @@ class Color:
     @classmethod
     def from_rgb_int(cls, red: int, green: int, blue: int, alpha: int = 255) -> 'Color':
         return cls(red / 255, green / 255, blue / 255, alpha / 255)
-
+    
+    @classmethod
+    def from_hsl(cls):
     # TODO: hsl and hsla
+        pass
 
 
 class Colormap:
@@ -98,7 +104,6 @@ class InterpolatedColormap(Colormap):
         return cls._from_matplotlib_data(_plasma_data)
 
 
-@dataclass
 class LineCap(Enum):
     butt = "butt"
     round = "round"
@@ -109,7 +114,6 @@ class LineCap(Enum):
         return cls[s]
 
 
-@dataclass
 class LineJoin(Enum):
     miter = "miter"
     round = "round"
@@ -225,12 +229,12 @@ class Font:
 
 
 def _style_to_cairo(style: Optional[FontStyle]):
-    if style is None:
-        return cairo.FONT_SLANT_NORMAL
     if style == FontStyle.italic:
         return cairo.FONT_SLANT_ITALIC
     if style == FontStyle.oblique:
         return cairo.FONT_SLANT_OBLIQUE
+    else:
+        return cairo.FONT_SLANT_NORMAL
 
 
 def _weight_to_cairo(weight: Optional[FontWeight]):
@@ -285,10 +289,10 @@ class Palette:
             self,
             name: str,
             colors: Union[Sequence[Union[Color, 'Palette']], Mapping[str, Color]],
-            default_light: Optional[str] = None,
-            default_dark: Optional[str] = None,
-            default_gray: Optional[str] = None,
-            color_wheel: Optional[Sequence[str]] = None,
+            default_light: str | None = None,
+            default_dark: str | None = None,
+            default_gray: str | None = None,
+            color_wheel: Sequence[str] | None = None
     ):
         self.colors = colors
         self.name = name

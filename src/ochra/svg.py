@@ -22,13 +22,13 @@ class Session(ContextManager):
         Marker.all_named_symbols = {}
 
 
-def dash_to_css(dash: Dash) -> Dict[str, str]:
+def dash_to_css(dash: Dash) -> dict[str, str]:
     style = {"stroke-dasharray": " ".join(str(d) for d in dash.array)}
     offset = {} if dash.offset is None else {"stroke-dashoffset": str(dash.offset)}
     return {**style, **offset}
 
 
-def marker_config_to_css(marker: MarkerConfig) -> Dict[str, str]:
+def marker_config_to_css(marker: MarkerConfig) -> dict[str, str]:
     if marker is None:
         return {}
     start = {} if marker.start is None else {"marker-start": f"url(#{marker.start.name})"}
@@ -37,7 +37,7 @@ def marker_config_to_css(marker: MarkerConfig) -> Dict[str, str]:
     return {**start, **mid, **end}
 
 
-def stroke_to_css(s: Stroke) -> Dict[str, str]:
+def stroke_to_css(s: Stroke) -> dict[str, str]:
     if s is None:
         s = Stroke()
     stroke = {"stroke": s.color.hex}
@@ -50,7 +50,7 @@ def stroke_to_css(s: Stroke) -> Dict[str, str]:
     return {**stroke, **dash, **width, **line_cap, **line_join, **miter_limit, **opacity, **width}
 
 
-def fill_to_css(f: Fill) -> Dict[str, str]:
+def fill_to_css(f: Fill) -> dict[str, str]:
     if f is None:
         f = Fill()
     fill = {"fill": f.color.hex}
@@ -67,7 +67,7 @@ def font_to_css(font: Font) -> Dict[str, str]:
     return {**family, **size, **weight, **style}
 
 
-def transformation_to_css(t: Transformation) -> Dict[str, str]:
+def transformation_to_css(t: Transformation) -> dict[str, str]:
     m = t.matrix / t.matrix[2, 2]
     [a, c, e, b, d, f] = m[:2, :].flatten()
     s = ' '.join(f2s(x.item()) for x in [a, b, c, d, e, f])
@@ -120,29 +120,6 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             y=f2s(e.point.y + e.marker.viewport.bottom_left.y),
             href=f"#symbol-{e.marker.name}",
         )  # conform to SVG 1.1 standard, can't use refX, refY
-    elif isinstance(e, Circle):
-        return ET.Element(
-            "circle",
-            cx=f2s(e.center.x),
-            cy=f2s(e.center.y),
-            r=f2s(e.radius),
-            **stroke_to_css(e.stroke),
-            **fill_to_css(e.fill),
-        )
-    elif isinstance(e, Ellipse):
-        rot = {
-            "transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"
-        } if e.angle != 0 else {}
-        return ET.Element(
-            "ellipse",
-            cx=f2s(e.center.x),
-            cy=f2s(e.center.y),
-            rx=f2s(e.a),
-            ry=f2s(e.b),
-            **rot,
-            **stroke_to_css(e.stroke),
-            **fill_to_css(e.fill),
-        )
     elif isinstance(e, Line):
         intersection = intersect_line_aabb(e, c.viewport)
         if intersection is None:
@@ -156,7 +133,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             d = Vector.unit(θ) * (e.stroke.width or 1.0)  # should * 0.5, but be conservative
             if (p1 - p0).dot(d) < 0:
                 d = -d
-            return element_to_svg(c, LineSegment(p0 - d, p1 + d, stroke=e.stroke))
+            return element_to_svg(c, LineSegment(p0 + (-d), p1 + d, stroke=e.stroke))
     elif isinstance(e, LineSegment):
         return ET.Element(
             "line",
@@ -183,6 +160,41 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             **fill_to_css(e.fill),
             **marker_config_to_css(MarkerConfig(None, e.marker, None)),
         )
+    elif isinstance(e, Circle):
+        return ET.Element(
+            "circle",
+            cx=f2s(e.center.x),
+            cy=f2s(e.center.y),
+            r=f2s(e.radius),
+            **stroke_to_css(e.stroke),
+            **fill_to_css(e.fill),
+        )
+    elif isinstance(e, Ellipse):
+        rot = {
+            "transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"
+        } if e.angle != 0 else {}
+        return ET.Element(
+            "ellipse",
+            cx=f2s(e.center.x),
+            cy=f2s(e.center.y),
+            rx=f2s(e.a),
+            ry=f2s(e.b),
+            **rot,
+            **stroke_to_css(e.stroke),
+            **fill_to_css(e.fill),
+        )
+    elif isinstance(e, Parabola):
+        ts = [t for s in c.viewport.edges for t in intersect_segment_conic_param(s, e)]
+        if len(ts) == 0:
+            return ET.Element("group")
+        tmin, tmax = min(ts), max(ts)
+        p0 = e.at(tmin)
+        p1 = e.at(tmax)
+        t0 = e.tangent_vector_at(tmin)
+        t1 = e.tangent_vector_at(tmax)
+        c = get_quadratic_bezier_curve_control_point_by_tangent(p0, t0, p1, t1)
+        return element_to_svg(c, QuadraticBezierCurve.from_points(p0, c, p1, stroke=e.stroke))
+        
     elif isinstance(e, QuadraticBezierCurve):
         return ET.Element(
             "path",

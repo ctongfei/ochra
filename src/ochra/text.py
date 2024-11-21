@@ -2,7 +2,7 @@ from functools import cached_property
 
 from ochra.geometry import Point, PointI, Transformation, Translation, Rotation
 from ochra.core import Element, AnyTransformed, Rectangle, AxisAlignedRectangle
-from ochra.style import Font, TextExtents
+from ochra.style import Font, TextExtents, _text_extents
 
 
 class Text(Element):

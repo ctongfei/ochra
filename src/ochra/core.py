@@ -3,18 +3,35 @@ from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain
-from typing import Optional, TYPE_CHECKING, Self
+import math
+from typing import Optional, TYPE_CHECKING, Self, cast, override
 
 import jax
 import jax.numpy as jnp
 import jax.scipy as jsp
 
 from ochra.util import Global, classproperty
-from ochra.geometry import τ, Scalar, Point, PointI, ProjPoint, Vector, VectorI, LineI, Transformation, Translation, Rotation, Scaling, \
-    Reflection, ConicI
+from ochra.geometry import (
+    τ,
+    Scalar,
+    Point,
+    PointI,
+    ProjPoint,
+    Vector,
+    VectorI,
+    LineI,
+    Transformation,
+    Translation,
+    Rotation,
+    Scaling,
+    Reflection,
+    ConicI,
+    ShearX,
+    ShearY
+)
 from ochra.style import Stroke, Fill
 from ochra.functions import lerp, lerp_point, dist, aligned_bbox_from_points, aligned_bbox_from_bboxes, \
-    solve_quadratic
+    solve_quadratic, solve_linear
 
 if TYPE_CHECKING:
     from ochra.mark import Marker, MarkerConfig
@@ -71,6 +88,12 @@ class Element(ABC):
 
     def scale(self, sx: float, sy: float, anchor: PointI = Point.origin) -> 'Element':
         return self.transform(Scaling.centered((sx, sy), Point.mk(anchor)))
+
+    def shear_x(self, m: Scalar) -> 'Element':
+        return self.transform(ShearX(m))
+
+    def shear_y(self, m: Scalar) -> 'Element':
+        return self.transform(ShearY(m))
 
     def reflect(self, axis: LineI) -> 'Element':
         return self.transform(Reflection(axis))
@@ -152,6 +175,8 @@ class Parametric(Element):
     Represents any shape whose points can be parameterized by a single parameter `t` in [0, 1].
     """
 
+    stroke: Stroke
+
     @property
     def pieces(self) -> Sequence[tuple[float, float]]:
         """
@@ -160,6 +185,13 @@ class Parametric(Element):
         Should be overridden if not continuous, e.g. in the case of the two branches of a hyperbola.
         """
         return [(0.0, 1.0)]
+
+    @cached_property
+    def derivative(self):
+        """
+        Computes the derivative of the parametric function.
+        """
+        return jax.jit(jax.jacfwd(self.at))  # cache this
 
     def at(self, t: Scalar) -> Point:
         """
@@ -173,7 +205,7 @@ class Parametric(Element):
         Returns the normalized tangent vector at parameter `t`.
         :param t: A parameter in [0, 1].
         """
-        g = jax.jacobian(self.at)(t)
+        g = self.derivative(t)
         return g.to_vector().normalize()
 
     def tangent_line_at(self, t: Scalar) -> "Line":
@@ -237,6 +269,12 @@ class Parametric(Element):
         else:
             return Group(qbps)
 
+    def transform(self, f: Transformation) -> 'Parametric':
+        return ParametricFromFunction(lambda t: cast(Point, f(self.at(t))), stroke=self.stroke)
+
+    def slice(self, t0: Scalar, t1: Scalar) -> 'Parametric':
+        return ParametricSlice(self, t0, t1, stroke=self.stroke)
+
     @staticmethod
     def from_func(func: Callable[[Scalar], Point], stroke: Stroke = Stroke()) -> 'Parametric':
         """
@@ -245,14 +283,32 @@ class Parametric(Element):
         return ParametricFromFunction(func, stroke=stroke)
 
     @staticmethod
-    def join(*shapes: 'Parametric') -> 'Parametric':
+    def join(*shapes: 'Parametric', stroke: Stroke = Stroke()) -> 'Parametric':
         """
         Joins multiple shapes into a single element.
         """
-        return JoinedParametric(shapes)
+        return JoinedParametric(shapes, stroke=stroke)
 
 
-#TODO: ParametricSlice
+class ParametricSlice(Parametric):
+    def __init__(self, outer: Parametric, a: Scalar, b: Scalar, stroke: Stroke = Stroke()):
+        self.outer = outer
+        self.a = a
+        self.b = b
+        self.stroke = stroke
+
+    def at(self, t: Scalar):
+        return self.outer.at(lerp(self.a, self.b, t))
+
+    @property
+    def pieces(self) -> Sequence[tuple[float, float]]:
+        ps = []
+        for p in self.outer.pieces:
+            i = intersect_interval_interval(p, (self.a, self.b))
+            if isinstance(i, tuple):
+                ps.append(i)
+        t = lambda x: (x - self.a) / (self.b - self.a)
+        return [(t(p[0]), t(p[1])) for p in ps]
 
 
 class ParametricFromFunction(Parametric):
@@ -272,9 +328,10 @@ class ParametricFromFunction(Parametric):
 
 
 class JoinedParametric(Group, Parametric):
-    def __init__(self, shapes: Sequence[Parametric]):
+    def __init__(self, shapes: Sequence[Parametric], stroke: Stroke = Stroke()):
         super().__init__(shapes)
         self.shapes = shapes
+        self.stroke = stroke
 
     @property
     def pieces(self) -> Sequence[tuple[float, float]]:
@@ -342,7 +399,7 @@ class Implicit(ABC):
             if g_norm == 0.0 or jnp.isnan(g_norm):
                 p0 = p0 + Vector(jnp.array(np.random.normal(size=2)))
                 continue
-            p1 = p0 - g * (self.implicit_func(p0) / g_norm / g_norm)
+            p1 = p0 + g * (-self.implicit_func(p0) / g_norm / g_norm)
             dist = (p1 - p0).norm()
             p0 = p1
         return p0
@@ -355,7 +412,7 @@ class Implicit(ABC):
             self,
             p0: Point = Point.origin,
             num_steps: int = Global.num_first_order_steps,
-            step: float = 2,
+            step: float = Global.first_order_step_size,
             eps: float = Global.approx_eps,
             **kwargs
     ) -> Element:
@@ -372,7 +429,7 @@ class Implicit(ABC):
             self,
             p0: Point = Point.origin,
             num_steps: int = Global.num_second_order_steps,
-            step: float = Global.step_size,
+            step: float = Global.second_order_step_size,
             eps: float = Global.approx_eps,
             **kwargs
     ) -> Element:
@@ -391,42 +448,17 @@ class Implicit(ABC):
             )
             for i in range(num_steps - 1)
         ]
-        qbp = QuadraticBezierPath(points, control_points, **kwargs)
+        qbp = QuadraticBezierPath.from_points(points, control_points, **kwargs)
         return qbp
 
 
 class ImplicitCurve(Implicit):
 
-    def __init__(self, func: Callable[[Point], Scalar]):
+    def __init__(self, func: Callable[[Point], jax.Array]):
         self._func = func
 
-    def implicit_func(self, p: Point) -> Scalar:
+    def implicit_func(self, p: Point) -> jax.Array:
         return self._func(p)
-
-
-class Canvas(Group):
-
-    def __init__(self,
-                 elements: Collection[Element],
-                 viewport: Optional['AxisAlignedRectangle'] = None
-                 ):
-        super().__init__(elements)
-        if viewport is None:
-            viewport = self.visual_bbox()
-        self.viewport = viewport
-
-
-@dataclass(init=False)
-class EmbeddedCanvas(Group):
-    canvas: Canvas
-    left_bottom: Point
-
-    def __init__(self, canvas: Canvas, left_bottom: PointI):
-        self.canvas = canvas
-        self.left_bottom = Point.mk(left_bottom)
-        super().__init__(elements=[
-            canvas.translate(self.left_bottom.x, self.left_bottom.y)
-        ])
 
 
 class Line(Parametric, Implicit):
@@ -439,15 +471,15 @@ class Line(Parametric, Implicit):
         self.stroke = stroke
 
     @property
-    def _a(self) -> float:
+    def _a(self) -> Scalar:
         return self.coef[0]
 
     @property
-    def _b(self) -> float:
+    def _b(self) -> Scalar:
         return self.coef[1]
 
     @property
-    def _c(self) -> float:
+    def _c(self) -> Scalar:
         return self.coef[2]
 
     @property
@@ -459,18 +491,18 @@ class Line(Parametric, Implicit):
         return Vector.mk(self._b, -self._a)
 
     @property
-    def angle(self) -> float:
-        return -math.atan2(self._a, self._b)
+    def angle(self) -> Scalar:
+        return -jnp.atan2(self._a, self._b)
 
     @property
-    def slope(self) -> float:
+    def slope(self) -> Scalar:
         return -self._a / self._b
 
     @property
-    def y_intercept(self) -> float:
+    def y_intercept(self) -> Scalar:
         return +self._c / self._b
 
-    def x_intercept(self) -> float:
+    def x_intercept(self) -> Scalar:
         return +self._c / self._a
 
     def aabb(self) -> 'Optional[AxisAlignedRectangle]':
@@ -485,14 +517,12 @@ class Line(Parametric, Implicit):
     def implicit_func(self, p: Point) -> jax.Array:
         return jnp.dot(self.coef, p.to_proj_point().loc)
 
-    def at(self, t: float):
-        s = jsp.special.logit(t) * 1000  # maps (0, 1) to (-∞, +∞)
-        h = jnp.hypot(self._a, self._b)
-        p = -self._c / h
-        θ = jnp.atan2(self._b, self._a)
-        x = p * jnp.cos(θ) - s * jnp.sin(θ)
-        y = p * jnp.sin(θ) + s * jnp.cos(θ)
-        return Point.mk((x, y))
+    def at(self, t: Scalar) -> Point:
+        o = Point.origin
+        p0 = self.closest_to(o)
+        d = dist(p0, o)
+        t = (t - 0.5) * τ / 2  # maps (0, 1) to (-τ/4, τ/4)
+        return p0 + (Vector.unit(self.angle) * (d * jnp.tan(t)))
 
     def transform(self, f: Transformation) -> 'Line':
         v = f.inverse().matrix.T.dot(self.coef)
@@ -509,26 +539,22 @@ class Line(Parametric, Implicit):
         return Point.mk((x, y))
 
     def __str__(self):
-        return f"{self._a:.2f}x + {self._b:.2f}y + {self._c:.2f} = 0"
+        return f"Line({self._a:.4f}x + {self._b:.4f}y + {self._c:.4f} = 0)"
 
-    @classproperty
+    @classmethod
     def y_axis(cls):
-        return HorizontalLine(0)
+        return cls((1, 0, 0))
 
-    @classproperty
+    @classmethod
     def x_axis(cls):
-        return VerticalLine(0)
+        return cls((0, 1, 0))
 
     @classmethod
     def from_two_points(cls, p0: PointI, p1: PointI, **kwargs):
-        p0 = Point.mk(p0)
-        p1 = Point.mk(p1)
+        pp0 = Point.mk(p0).to_proj_point()
+        pp1 = Point.mk(p1).to_proj_point()
         return cls(
-            (
-                p0.y - p1.y,
-                p1.x - p0.x,
-                p0.x * p1.y - p0.y * p1.x,
-            ),
+            jnp.cross(pp0.loc, pp1.loc),
             **kwargs
         )
 
@@ -559,24 +585,6 @@ class Line(Parametric, Implicit):
             ),
             **kwargs
         )
-
-
-class HorizontalLine(Line):
-    def __init__(self, y: float):
-        super().__init__((0, 1, -y))
-
-    @classproperty
-    def x_axis(cls):
-        return cls(0)
-
-
-class VerticalLine(Line):
-    def __init__(self, x: float):
-        super().__init__((1, 0, -x))
-
-    @classproperty
-    def y_axis(cls):
-        return cls(0)
 
 
 class LineSegment(Parametric):
@@ -633,6 +641,9 @@ class LineSegment(Parametric):
             min(self.p0.x, self.p1.x) <= p.x <= max(self.p0.x, self.p1.x) and
             min(self.p0.y, self.p1.y) <= p.y <= max(self.p0.y, self.p1.y)
         )
+
+    def __str__(self):
+        return f"LineSegment({self.p0}, {self.p1})"
 
     def __eq__(self, other):
         return isinstance(other, LineSegment) and self.p0 == other.p0 and self.p1 == other.p1
@@ -774,7 +785,7 @@ class Polygon(Parametric):
                      p: int,
                      q: int,
                      *,
-                     circumradius: float,
+                     circumradius: float = None,
                      **kwargs
                      ):
         """
@@ -785,12 +796,11 @@ class Polygon(Parametric):
         def mk_part(j: int) -> "Polygon":
             return cls(
                 [
-                    Point(circumradius * math.cos(math.tau * i / p), circumradius * math.sin(math.tau * i / p))
+                    Point.mk(circumradius * math.cos(math.tau * i / p), circumradius * math.sin(math.tau * i / p))
                     for i in range(j, p * q, q)
                 ],
                 **kwargs
             )
-
         num_parts = math.gcd(p, q)
         if num_parts == 1:
             return mk_part(0)
@@ -798,26 +808,9 @@ class Polygon(Parametric):
             return JoinedParametric([mk_part(i) for i in range(num_parts)])
 
 
-def _get_circumradius(
-        n: int,
-        circumradius: Optional[float],
-        side_length: Optional[float],
-        apothem: Optional[float]
-):
-    if circumradius is not None:
-        return circumradius
-    elif side_length is not None:
-        return side_length / (2 * math.sin(math.tau / (2 * n)))
-    elif apothem is not None:
-        return apothem / math.cos(math.tau / (2 * n))
-    else:
-        raise ValueError("One of circumradius, side_length, or apothem must be provided.")
-
-
-
 class Rectangle(Polygon, Parametric):
 
-    def __init__(self, bottom_left: PointI, top_right: PointI, angle: float = 0.0, stroke: Stroke = Stroke(), fill: Fill = Fill()):
+    def __init__(self, bottom_left: PointI, top_right: PointI, angle: Scalar = 0.0, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         self.bottom_left = Point.mk(bottom_left)
         self.top_right = Point.mk(top_right)
         ray = Line.from_point_and_vector(self.bottom_left, Vector.unit(angle))
@@ -856,16 +849,16 @@ class Rectangle(Polygon, Parametric):
         u = max(p.y for p in self.vertices)
         return AxisAlignedRectangle(bottom_left=(l, b), top_right=(r, u))
 
-    def translate(self, dx: float, dy: float) -> 'Rectangle':
+    def translate(self, dx: Scalar, dy: Scalar) -> 'Rectangle':
         return Rectangle(
-            self.bottom_left + Vector.mk((dx, dy)),
-            self.top_right + Vector.mk((dx, dy)),
+            self.bottom_left + Vector.mk(dx, dy),
+            self.top_right + Vector.mk(dx, dy),
             self.angle,
             stroke=self.stroke,
             fill=self.fill
         )
 
-    def rotate(self, angle: float, anchor: PointI = Point.origin) -> 'Rectangle':
+    def rotate(self, angle: Scalar, anchor: PointI = Point.origin) -> 'Rectangle':
         rot = Rotation.centered(angle, anchor)
         return Rectangle(
             rot(self.bottom_left),
@@ -884,7 +877,7 @@ class AxisAlignedRectangle(Rectangle, Parametric):
     def aabb(self) -> 'AxisAlignedRectangle':
         return self
 
-    def pad(self, dx: float, dy: float) -> 'AxisAlignedRectangle':
+    def pad(self, dx: Scalar, dy: Scalar) -> 'AxisAlignedRectangle':
         return AxisAlignedRectangle(
             self.bottom_left.translate(-dx, -dy),
             self.top_right.translate(dx, dy),
@@ -892,7 +885,7 @@ class AxisAlignedRectangle(Rectangle, Parametric):
             fill=self.fill
         )
 
-    def translate(self, dx: float, dy: float) -> 'AxisAlignedRectangle':
+    def translate(self, dx: Scalar, dy: Scalar) -> 'AxisAlignedRectangle':
         return AxisAlignedRectangle(
             self.bottom_left.translate(dx, dy),
             self.top_right.translate(dx, dy),
@@ -900,9 +893,9 @@ class AxisAlignedRectangle(Rectangle, Parametric):
             fill=self.fill
         )
 
-    def scale(self, sx: float, sy: float) -> 'AxisAlignedRectangle':
+    def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> 'AxisAlignedRectangle':
         return AxisAlignedRectangle(
-            self.bottom_left.scale(sx, sy),
+            self.bottom_left.scale(sx, sy),  # TODO: wrong
             self.top_right.scale(sx, sy),
             stroke=self.stroke,
             fill=self.fill
@@ -912,26 +905,46 @@ class AxisAlignedRectangle(Rectangle, Parametric):
         return AxisAlignedRectangle(self.bottom_left, self.top_right, stroke, self.fill)
 
 
-class Conic(Parametric):
+class Conic(Implicit, Parametric):
     """
     Represents any conic section in the plane.
     """
-    def __init__(cls, coef: ConicI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
+    def __new__(cls, *args, **kwargs):
+        if cls is Conic:
+            raise TypeError("Conic cannot be instantiated directly.")
+        return super().__new__(cls)
+
+    def __init__(self, coef: ConicI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         if isinstance(coef, tuple):
             a, b, c, d, e, f = coef
             coef = jnp.array([
-                [a, b/2, d/2],
-                [b/2, c, e/2],
-                [d/2, e/2, f],
+                [a, b / 2, d / 2],
+                [b / 2, c, e / 2],
+                [d / 2, e / 2, f],
             ])
         assert coef.shape == (3, 3)
-        cls.proj_matrix = (coef + coef.T) / 2  # symmetrize the quadratic form
-        cls.stroke = stroke
-        cls.fill = fill
+        self.proj_matrix = (coef + coef.T) / 2  # symmetrize the quadratic form
+        self.aff_matrix = self.proj_matrix[:2, :2]
+        self.stroke = stroke
+        self.fill = fill
 
-    def materialize(self):
-        d3 = jnp.linalg.det(self.proj_matrix)
-        d2 = jnp.linalg.det(self.proj_matrix[:2, :2])
+    def implicit_func(self, p: Point) -> jax.Array:
+        pp = p.to_proj_point().loc
+        return pp.T @ self.proj_matrix @ pp
+
+    @classmethod
+    def create(cls, coef: ConicI, stroke: Stroke = Stroke(), fill: Fill = Fill()) -> 'Conic':
+        if isinstance(coef, tuple):
+            a, b, c, d, e, f = coef
+            coef = jnp.array([
+                [a, b / 2, d / 2],
+                [b / 2, c, e / 2],
+                [d / 2, e / 2, f],
+            ])
+        proj_matrix = (coef + coef.T) / 2  # symmetrize the quadratic form
+        aff_matrix = proj_matrix[:2, :2]
+        d3 = jnp.linalg.det(proj_matrix)
+        d2 = jnp.linalg.det(aff_matrix)
         if d3 == 0.0:  # degenerate
             if d2 < 0.0:
                 # two intersecting lines, degenerate hyperbola
@@ -943,18 +956,19 @@ class Conic(Parametric):
                 # a dot, degenerate ellipse
                 pass
         else:  # non-degenerate
-            if d2 < 0.0:
-                # hyperbola
-                pass
-            elif d2 == 0:
-                # parabola
-                pass
+            if jnp.isclose(d2, 0.0):
+                return Parabola(coef, stroke, fill)
+            elif d2 < 0.0:
+                pass  # hyperbola
             else:
-                # ellipse
-                pass
+                return Ellipse(coef, stroke, fill)
+
+    def transform(self, f: Transformation) -> 'Conic':
+        t = f.inverse().matrix
+        return Conic.create(t.T @ self.proj_matrix @ t, stroke=self.stroke, fill=self.fill)
 
     @classmethod
-    def from_focus_and_directrix(cls, focus: PointI, directrix: Line, eccentricity: float, **kwargs):
+    def from_focus_directrix_eccentricity(cls, focus: PointI, directrix: Line, eccentricity: float, **kwargs):
         """
         Defines a conic section from its focus, directrix, and eccentricity.
         """
@@ -967,8 +981,7 @@ class Conic(Parametric):
         D = -2 * p * (a * a + b * b) - 2 * e * e * a * c
         E = -2 * q * (b * b + a * a) - 2 * e * e * b * c
         F = (p * p + q * q) * (a * a + b * b) + 2 * e * e * c * c
-        return cls((A, B, C, D, E, F), **kwargs)
-
+        return cls.create((A, B, C, D, E, F), **kwargs)
 
 
 class Ellipse(Conic, Parametric):
@@ -977,22 +990,19 @@ class Ellipse(Conic, Parametric):
         super().__init__(coef, stroke=stroke, fill=fill)
         assert self.proj_matrix.shape == (3, 3)
         assert jnp.linalg.det(self.proj_matrix) != 0.0
-        assert jnp.linalg.det(self.proj_matrix[:2, :2]) > 0.0
-
-        self.center = Point(-jnp.linalg.inv(self.proj_matrix[:2, :2]) @ self.proj_matrix[:2, 2])
-        self.angle = 0.5 * jnp.atan2(
-            self.proj_matrix[1, 0] + self.proj_matrix[0, 1],
-            self.proj_matrix[1, 1] - self.proj_matrix[0, 0]
-        )
-        if self.angle < 0.0:
-            self.angle = -self.angle
-        t = (Translation(self.center.loc) @ Rotation(self.angle)).matrix
-        m = t.T @ self.proj_matrix @ t
-        self.a = jnp.sqrt(-m[2, 2] / m[0, 0])
-        self.b = jnp.sqrt(-m[2, 2] / m[1, 1])
-        self.c = jnp.sqrt(self.a ** 2 - self.b ** 2)
-        self.focus0 = self.center - Vector.unit(self.angle) * self.c
-        self.focus1 = self.center + Vector.unit(self.angle) * self.c
+        d = jnp.linalg.det(self.aff_matrix)
+        assert d > 0.0, "This is not an ellipse."
+        eigvals, eigvecs = jnp.linalg.eigh(self.aff_matrix)
+        eigvals = jnp.real(eigvals)
+        eigvecs = jnp.real(eigvecs)
+        l0, l1 = eigvals[0], eigvals[1]
+        self.a = jnp.sqrt(d / l0)
+        self.b = jnp.sqrt(d / l1)
+        self.c = jnp.sqrt(d / l0 - d / l1)
+        self.center = Point.mk(-jnp.linalg.inv(self.aff_matrix) @ self.proj_matrix[:2, 2])
+        self.angle = jnp.atan2(eigvecs[1, 0], eigvecs[0, 0])
+        self.focus0: Point = self.center + (-Vector.unit(self.angle) * self.c)
+        self.focus1: Point = self.center + Vector.unit(self.angle) * self.c
 
     @classmethod
     def from_foci_and_major_axis(
@@ -1036,30 +1046,48 @@ class Ellipse(Conic, Parametric):
         return self.c / self.a
 
     @property
-    def vertex0(self):
-        return self.center - Vector.unit(self.angle) * self.a
+    def vertex0(self) -> Point:
+        return self.center + (-Vector.unit(self.angle) * self.a)
 
     @property
-    def vertex1(self):
+    def vertex1(self) -> Point:
         return self.center + Vector.unit(self.angle) * self.a
 
     @property
-    def covertex0(self):
-        return self.center - Vector.unit(self.angle + math.tau / 4) * self.b
+    def covertex0(self) -> Point:
+        return self.center + (-Vector.unit(self.angle + τ / 4) * self.b)
 
     @property
-    def covertex1(self):
-        return self.center + Vector.unit(self.angle + math.tau / 4) * self.b
+    def covertex1(self) -> Point:
+        return self.center + Vector.unit(self.angle + τ / 4) * self.b
 
     def circumscribed_rectangle(self) -> Rectangle:
-        pass
+        bottom_left: Point = self.vertex0 + (self.covertex0 - self.center)
+        top_right: Point = self.vertex1 + (self.covertex1 - self.center)
+        return Rectangle(bottom_left, top_right, self.angle)
+
+    def directrix0(self) -> Line:
+        minor_axis = Line.from_two_points(self.center, self.covertex0)
+        d = (self.vertex0 - self.center) * (1 + (self.a - self.c) / self.a * self.eccentricity)
+        return minor_axis.translate(d.x, d.y)
+
+    def directrix1(self) -> Line:
+        minor_axis = Line.from_two_points(self.center, self.covertex1)
+        d = (self.vertex1 - self.center) * (1 + (self.a - self.c) / self.a * self.eccentricity)
+        return minor_axis.translate(d.x, d.y)
 
     def arc_between(self, start: float, end: float):
         return Arc(self, start, end)
 
-    def __contains__(self, p: PointI):
+    def aabb(self) -> 'AxisAlignedRectangle | None':
+        return self.circumscribed_rectangle().aabb()
+
+    def __contains__(self, p: PointI) -> bool:
         p = Point.mk(p)
-        return dist(self.focus0, p) + dist(self.focus1, p) <= self.a * 2
+        return float(dist(self.focus0, p) + dist(self.focus1, p)) <= float(self.a * 2)
+
+    def __str__(self):
+        return f"Ellipse(f0 = {self.focus0}, f1 = {self.focus1}, a = {self.a}, angle = {self.angle})"
 
     def at(self, t: Scalar):
         θ = t * τ
@@ -1070,10 +1098,8 @@ class Ellipse(Conic, Parametric):
 
     @classmethod
     def standard(cls, a: float, b: float, **kwargs):
-        if a >= b:
-            return cls((b * b, 0, a * a, 0, 0, -a*a*b*b), **kwargs)
-        else:
-            return cls((a * a, 0, b * b, 0, 0, -a*a*b*b), **kwargs)
+        assert a >= b
+        return cls((b * b, 0, a * a, 0, 0, -a*a*b*b), **kwargs)
 
 
 class Circle(Ellipse, Parametric):
@@ -1089,27 +1115,27 @@ class Circle(Ellipse, Parametric):
 
     def at(self, t: float):
         x, y = self.center.x, self.center.y
-        θ = t * math.tau  # [0, 1] -> [0, τ]
+        θ = t * τ  # [0, 1] -> [0, τ]
         return Point(x + self.radius * math.cos(θ), y + self.radius * math.sin(θ))
 
-    def __contains__(self, p: PointI):
+    def __contains__(self, p: PointI) -> bool:
         p = Point.mk(p)
-        return dist(self.center, p) <= self.radius
+        return float(dist(self.center, p)) <= float(self.radius)
 
     def aabb(self) -> 'AxisAlignedRectangle':
         return AxisAlignedRectangle(
-            self.center - Vector.mk((self.radius, self.radius)),
+            self.center + (-Vector.mk((self.radius, self.radius))),
             self.center + Vector.mk((self.radius, self.radius))
         )
 
-    def transform(self, f: Transformation) -> 'Circle':
+    def transform(self, f: Transformation) -> 'Ellipse':
         # TODO: wrong! transforms into an ellipse
         return Circle(self.radius, center=f(self.center), stroke=self.stroke, fill=self.fill)
 
     @classmethod
-    def from_center_and_radius(cls, center: PointI, radius: float):
+    def from_center_and_radius(cls, center: PointI, radius: float, **kwargs):
         center = Point.mk(center)
-        return cls(center, radius)
+        return cls(radius, center, **kwargs)
 
 
 class Arc(Parametric):
@@ -1124,14 +1150,27 @@ class Arc(Parametric):
         return self.ellipse.at(lerp(self.start, self.end, t))
 
 
-class Hyperbola(Conic, Parametric):
+class HyperbolaBranch(Conic, Parametric):
     pass
 
 
 class Parabola(Conic, Parametric):
 
-    def slice(self, t0: Scalar, t1: Scalar) -> QuadraticBezierCurve:
-        pass
+    def slice(self, t0: Scalar, t1: Scalar) -> 'QuadraticBezierCurve':
+        p0 = self.at(t0)
+        p1 = self.at(t1)
+        return QuadraticBezierCurve.from_points(
+            p0,
+            get_quadratic_bezier_curve_control_point_by_tangent(
+                p0, self.tangent_vector_at(t0),
+                p1, self.tangent_vector_at(t1)
+            ),
+            p1
+        )
+
+    @classmethod
+    def from_focus_and_directrix(cls, focus: PointI, directrix: Line, **kwargs):
+        return Conic.from_focus_directrix_eccentricity(focus, directrix, 1.0, **kwargs)
 
 
 class QuadraticBezierCurve(Parametric):
@@ -1212,6 +1251,14 @@ class QuadraticBezierPath(Parametric):
             qbc = QuadraticBezierCurve(self.mat[2 * i:2 * i + 3, :])
             return qbc.at(t0)
 
+    @classmethod
+    def from_points(cls, points: Sequence[PointI], control_points: Sequence[PointI], **kwargs):
+        assert len(points) == len(control_points) + 1
+        arr: list[Point] = [Point.origin for _ in range(2 * len(points) - 1)]
+        arr[::2] = [Point.mk(p) for p in points]
+        arr[1::2] = [Point.mk(p) for p in control_points]
+        return cls(jnp.stack([p.loc for p in arr]), **kwargs)
+
     def transform(self, f: Transformation) -> Self:
         return QuadraticBezierPath(f.apply_batch(self.mat), stroke=self.stroke, markers=self.markers)
 
@@ -1224,7 +1271,48 @@ class CubicBezierPath(Parametric):
     pass
 
 
-def intersect_interval_interval(i0: tuple[float, float], i1: tuple[float, float]) -> tuple[float, float] | float | None:
+class Canvas(Group):
+
+    def __init__(self,
+                 elements: Collection[Element],
+                 viewport: Optional['AxisAlignedRectangle'] = None
+                 ):
+        super().__init__(elements)
+        if viewport is None:
+            viewport = self.visual_bbox()
+        self.viewport = viewport
+
+
+@dataclass(init=False)
+class EmbeddedCanvas(Group):
+    canvas: Canvas
+    left_bottom: Point
+
+    def __init__(self, canvas: Canvas, left_bottom: PointI):
+        self.canvas = canvas
+        self.left_bottom = Point.mk(left_bottom)
+        super().__init__(elements=[
+            canvas.translate(self.left_bottom.x, self.left_bottom.y)
+        ])
+
+
+def _get_circumradius(
+        n: int,
+        circumradius: Optional[float],
+        side_length: Optional[float],
+        apothem: Optional[float]
+):
+    if circumradius is not None:
+        return circumradius
+    elif side_length is not None:
+        return side_length / (2 * math.sin(math.tau / (2 * n)))
+    elif apothem is not None:
+        return apothem / math.cos(math.tau / (2 * n))
+    else:
+        raise ValueError("One of circumradius, side_length, or apothem must be provided.")
+
+
+def intersect_interval_interval(i0: tuple[Scalar, Scalar], i1: tuple[Scalar, Scalar]) -> tuple[Scalar, Scalar] | Scalar | None:
     """
     Intersect two intervals.
     """
@@ -1237,8 +1325,8 @@ def intersect_interval_interval(i0: tuple[float, float], i1: tuple[float, float]
     if t0 < s1 or t1 < s0:
         return None
     else:
-        l = max(s0, s1)
-        r = min(t0, t1)
+        l = jnp.maximum(s0, s1)
+        r = jnp.minimum(t0, t1)
         if l == r:
             return r
         else:
@@ -1251,12 +1339,9 @@ def intersect_line_line(l0: Line, l1: Line) -> Point | Line | None:
     :return: The intersection point, the intersection line, or None if the lines are parallel.
     """
     pp = jnp.cross(l0.coef, l1.coef)  # projective point
-    if jnp.all(pp == 0):  # coincident lines
+    if jnp.allclose(pp, 0, Global.approx_eps):  # coincident lines
         return l0
-    elif pp[2] == 0:  # parallel lines
-        return None
-    else:
-        return ProjPoint(pp).to_point()
+    return ProjPoint(pp).to_point()
 
 
 def intersect_segment_segment(s0: LineSegment, s1: LineSegment) -> Point | LineSegment | None:
@@ -1282,24 +1367,28 @@ def intersect_segment_segment(s0: LineSegment, s1: LineSegment) -> Point | LineS
         return None
 
 
+def intersect_line_segment_param(l: Line, s: LineSegment) -> list[Scalar]:
+    a = l.coef.dot(jnp.concat([s.p1.loc - s.p0.loc, jnp.array([0])]))
+    b = l.implicit_func(s.p0)
+    return [x for x in solve_linear(a, b) if 0 <= x <= 1]
+
+
 def intersect_line_segment(l: Line, s: LineSegment) -> Point | LineSegment | None:
     """
     Intersect a line and a line segment.
     """
     x = intersect_line_line(l, s.extend_as_line())
     if isinstance(x, Point):
-        if x in s:
+        ts = intersect_line_segment_param(l, s)
+        if len(ts) == 1:
             return x
-        else:
-            return None
+        elif len(ts) == 2:
+            return LineSegment(s.at(ts[0]), s.at(ts[1]))
     elif isinstance(x, Line):
         return s  # line overlaps with segment
 
 
-def intersect_line_conic(l: Line, c: Conic) -> tuple[Point, Point] | Point | None:
-    """
-    Intersect a line and a conic.
-    """
+def intersect_line_conic(l: Line, c: Conic) -> list[Point]:
     A = c.proj_matrix
     x0 = l.at(1/2).to_proj_point().loc
     v = jnp.concat([l.direction_vector.vec, jnp.array([0])])
@@ -1308,21 +1397,21 @@ def intersect_line_conic(l: Line, c: Conic) -> tuple[Point, Point] | Point | Non
         2 * x0.T @ A @ v,
         x0.T @ A @ x0
     )
-    if ts is None:
-        return None
-    if isinstance(ts, Scalar):
-        return ProjPoint(x0 + ts * v).to_point()
-    else:
-        t0, t1 = ts
-        p0 = ProjPoint(x0 + t0 * v).to_point()
-        p1 = ProjPoint(x0 + t1 * v).to_point()
-        return p0, p1
+    def to_point(t: Scalar) -> Point:
+        p = ProjPoint(x0 + t * v).to_point()
+        assert p is not None
+        return p
+    return [to_point(t) for t in ts]
+
+
+def intersect_parabola_segment_parametric(p: Parabola, s: LineSegment) -> list[Scalar]:
+    pass
 
 
 def intersect_line_aabb(l: Line, aabb: AxisAlignedRectangle) -> Point | list[Point] | LineSegment | None:
     scores = [l.implicit_func(v).item() for v in aabb.vertices]
     num_ge_0 = sum(s >= 0 for s in scores)
-    if num_ge_0 == 0:
+    if num_ge_0 == 0 or num_ge_0 == 4:
         return None  # no intersection
     else:
         ps = [intersect_line_segment(l, s) for s in aabb.edges]

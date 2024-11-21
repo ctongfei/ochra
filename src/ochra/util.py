@@ -2,10 +2,11 @@ class Global:
     """
     Global settings for drawing.
     """
-    approx_eps: float = 2 ** -12
+    approx_eps: float = 2 ** -16
     boundary_eps: float = 2 ** -16
-    step_size: float = 4.0
-    num_first_order_steps: int = 256
+    first_order_step_size: float = 2.0
+    second_order_step_size: float = 8.0
+    num_first_order_steps: int = 512
     num_second_order_steps: int = 64
 
     @classmethod
@@ -17,8 +18,12 @@ class Global:
         cls.boundary_eps = zeta
 
     @classmethod
-    def set_step_size(cls, step: float):
-        cls.step_size = step
+    def set_first_order_step_size(cls, step: float):
+        cls.first_order_step_size = step
+        
+    @classmethod
+    def set_second_order_step_size(cls, step: float):
+        cls.second_order_step_size = step
 
     @classmethod
     def set_num_first_order_steps(cls, n: int):

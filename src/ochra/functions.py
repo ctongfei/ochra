@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax
 
 from ochra.util import Global
-from ochra.geometry import Point, Scalar
+from ochra.geometry import Point, Scalar, τ
 
 if TYPE_CHECKING:
     from ochra.core import AxisAlignedRectangle
@@ -17,12 +17,6 @@ def f2s(x: Any) -> str:
         return f"{x:.4f}".rstrip("0").rstrip(".")
     else:
         return str(x)
-
-
-def logit(x: float) -> float:
-    eps = 1e-10
-    x = min(1 - eps, max(eps, x))
-    return math.log(x / (1 - x))
 
 
 def lerp(a: Scalar, b: Scalar, t: Scalar) -> Scalar:
@@ -38,26 +32,40 @@ def dist(a: Point, b: Point) -> Scalar:
 
 
 def rad_to_deg(rad: float) -> float:
-    return rad * 360 / math.tau
+    return rad * 360 / τ
 
 
 def deg_to_rad(deg: float) -> float:
-    return deg * math.tau / 360
+    return deg * τ / 360
 
 
 def turn_to_rad(turn: float) -> float:
-    return turn * math.tau
+    return turn * τ
 
 
-def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> tuple[Scalar, Scalar] | Scalar | None:
-    d = b ** 2 - 4 * a * c
+def solve_linear(a: Scalar, b: Scalar) -> list[Scalar]:
+    """
+    Solves the linear equation ax + b = 0.
+    :return: a list of solutions, which can contain 0 or 1 elements.
+    """
+    if jnp.allclose(a, 0, atol=Global.approx_eps):
+        return []
+    return [-b / a]
+
+
+def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
+    """
+    Solves the quadratic equation ax^2 + bx + c = 0.
+    :return: a list of solutions, which can contain 0, 1, or 2 elements.
+    """
+    d = b * b - 4 * a * c
     if jnp.allclose(d, 0, atol=Global.approx_eps):
-        return -b / (2 * a)
+        return [-b / (2 * a)]
     elif d < 0:
-        return None
+        return []
     else:
         sqrt_d = jnp.sqrt(d)
-        return (-b + sqrt_d) / (2 * a), (-b - sqrt_d) / (2 * a)
+        return [(-b - sqrt_d) / (2 * a), (-b + sqrt_d) / (2 * a)]
 
 
 def aligned_bbox_from_points(ps: Iterable[Point]) -> 'AxisAlignedRectangle':

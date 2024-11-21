@@ -1,7 +1,7 @@
 import math
-from typing import Tuple, TypeAlias, TYPE_CHECKING
+from gettext import npgettext
+from typing import TYPE_CHECKING
 
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 τ = 6.283185307179586
 """The true circle constant, the ratio of a circle's circumference to its radius."""
 
-Scalar: TypeAlias = float | jax.Array
+type Scalar = float | jax.Array
 """A scalar value, which can be a float or a Jax array of dimensionality 0."""
 
 
@@ -43,7 +43,7 @@ class Vector:
     def __sub__(self, v: 'Vector') -> 'Vector':
         return Vector(self.vec - v.vec)
 
-    def __mul__(self, s: float) -> 'Vector':
+    def __mul__(self, s: Scalar) -> 'Vector':
         return Vector(self.vec * s)
 
     def __neg__(self) -> 'Vector':
@@ -72,7 +72,7 @@ class Vector:
         return Point(self.vec)
 
     @classmethod
-    def mk(cls, x: 'VectorI | float', y: float = None):
+    def mk(cls, x: 'VectorI | Scalar', y: Scalar | None = None):
         if (isinstance(x, float) or isinstance(x, jax.Array)) and y is not None:
             return cls(jnp.array([x, y]))
         assert y is None
@@ -108,10 +108,8 @@ class Point:
     def __add__(self, v: Vector):
         return Point(self.loc + v.vec)
 
-    def __sub__(self, p: 'Point | Vector') -> 'Vector | Point':
-        if isinstance(p, Point):
-            return Vector(self.loc - p.loc)
-        return Point(self.loc - p.vec)
+    def __sub__(self, p: 'Point') -> Vector:
+        return Vector(self.loc - p.loc)
 
     def __eq__(self, other):
         return jnp.allclose(self.loc, other.loc, atol=Global.approx_eps).item()
@@ -129,7 +127,7 @@ class Point:
         return ProjPoint(jnp.concat([self.loc, jnp.array([1])]))
 
     def __str__(self):
-        return f"({self.x.item()}, {self.y.item()})"
+        return f"Point({self.x.item()}, {self.y.item()})"
 
     def __repr__(self):
         return self.__str__()
@@ -143,7 +141,7 @@ class Point:
         return cls(jnp.array([r * jnp.cos(θ), r * jnp.sin(θ)]))
 
     @classmethod
-    def mk(cls, x: 'PointI | float', y: float = None):
+    def mk(cls, x: 'PointI | Scalar', y: Scalar | None = None):
         if (isinstance(x, float) or (isinstance(x, jax.Array) and x.ndim == 0)) and y is not None:
             return cls(jnp.array([x, y]))
         assert y is None
@@ -152,10 +150,10 @@ class Point:
         return cls(jnp.array([float(x[0]), float(x[1])]))
 
 
-PointI: TypeAlias = Point | tuple[float, float] | np.ndarray | jax.Array
-VectorI: TypeAlias = Vector | tuple[float, float] | np.ndarray | jax.Array
-LineI: TypeAlias = tuple[float, float, float] | np.ndarray | jax.Array  # a x + b y + c = 0
-ConicI: TypeAlias = tuple[float, float, float, float, float, float] | np.ndarray | jax.Array  # a x^2 + b x y + c y^2 + d x + e y + f = 0
+type PointI = Point | tuple[float, float] | jax.Array
+type VectorI = Vector | tuple[float, float] | jax.Array
+type LineI = tuple[float, float, float] | jax.Array  # a x + b y + c = 0
+type ConicI = tuple[float, float, float, float, float, float] | jax.Array  # a x^2 + b x y + c y^2 + d x + e y + f = 0
 
 
 @jdc.pytree_dataclass
@@ -166,7 +164,6 @@ class ProjPoint:
     def __post_init__(self):
         assert self.loc.shape == (3,)
         # TODO: assert not all zero
-        assert not jnp.allclose(self.loc, 0, atol=Global.approx_eps)
 
     @property
     def x(self) -> Scalar:
@@ -180,8 +177,9 @@ class ProjPoint:
     def z(self) -> Scalar:
         return self.loc[2]
 
-    def to_point(self):
-        assert self.z != 0
+    def to_point(self) -> Point | None:  # None if infinity point
+        if self.z == 0:
+            return None
         return Point(self.loc[:2] / self.z)
 
     def is_infinity_point(self):
@@ -199,27 +197,33 @@ class ProjPoint:
         return False
 
 
+# TODO: create hierarchy of transformations
+# Euclidean < Affine < Projective
 class Transformation:
     """
-    Represents a 2D affine transformation.
+    Represents a 2D projective transformation.
     """
     def __init__(self, matrix: jax.Array):
         """
-        :param matrix: 3x3 matrix representing affine transformation.
+        :param matrix: 3x3 matrix representing any projective transformation.
         """
         assert matrix.shape == (3, 3)
-        self.matrix = matrix
+        z = matrix[2, 2]
+        assert z != 0.0
+        assert jnp.linalg.det(matrix) != 0.0  # nonsingular
+        self.matrix = matrix / z
 
-    def __matmul__(self, other):
+    def __matmul__(self, other) -> 'Transformation':
         if isinstance(other, CompositeTransformation):
             return CompositeTransformation([self] + other.transformations)
         else:
             return CompositeTransformation([self, other])
 
-    def __call__(self, point: Point):
-        pp = self.matrix @ jnp.concat([point.loc, jnp.array([1])])
-        # TODO: may result in an infinity-point on the affine plane
-        return Point(pp[:2] / pp[2])
+    def __call__(self, point: Point) -> Point | None:
+        return self.apply_proj(point.to_proj_point()).to_point()
+
+    def apply_proj(self, pp: ProjPoint) -> ProjPoint:
+        return ProjPoint(self.matrix @ pp.loc)
 
     def apply_batch(self, points: jax.Array) -> jax.Array:
         proj_points = jnp.concat([points, jnp.ones((points.shape[0], 1))], axis=1)
@@ -230,30 +234,24 @@ class Transformation:
         inverse = jnp.linalg.inv(self.matrix)
         return Transformation(inverse)
 
-    def angle_if_rotation(self) -> float:
-        a, b, c, d = self.matrix[:2, :2].flatten()
-        return math.atan2(b, a)
-
-    def scale_if_scaling(self) -> Tuple[float, float]:
-        a, b, c, d = self.matrix[:2, :2].flatten()
-        return math.hypot(a, b), math.hypot(c, d)
-
-    def vector_if_translation(self) -> Vector:
-        return Vector(self.matrix[:2, 2])
-
-    def decompose(self) -> Tuple["Transformation", "Transformation", "Transformation"]:
+    def decompose(self) -> tuple['Translation', 'Rotation', 'ShearX', 'Scaling', 'Elation']:
         """
-        Decomposes into translation, rotation, and scaling.
+        Decomposes an affine transformation into translation, rotation, and scaling.
         """
         w = self.matrix[2, 2]
         m = self.matrix / w
-        translation = jnp.eye(3).at[:2, 2].set(m[:2, 2])
-        a, b, c, d = m[0, 0], m[0, 1], m[1, 0], m[1, 1]
-        sx = math.hypot(a, b)
-        sy = math.hypot(c, d)
-        rotation = jnp.eye(3).at[:2, 0].set(m[:2, 0] / sx).at[:2, 1].set(m[:2, 1] / sy)
-        return Transformation(translation), Transformation(
-            rotation), Scaling((sx, sy))
+        tr = Translation(m[:2, 2])
+        m0 = m[:2, :2]
+        sx = jnp.linalg.norm(m0[:, 0])
+        θ = jnp.atan2(m0[1, 0], m0[0, 0])
+        msy = jnp.cos(θ) * m0[0, 1] + jnp.sin(θ) * m0[1, 1]
+        if not jnp.isclose(jnp.sin(θ), 0.0, atol=Global.approx_eps):
+            sy = (msy * jnp.cos(θ) - m0[0, 1]) / jnp.sin(θ)
+        else:
+            sy = (m0[1, 1] - msy * jnp.sin(θ)) / jnp.cos(θ)
+        m = msy / sy
+        el = Elation(self.matrix[:2, 2])
+        return tr, Rotation(θ), ShearX(m), Scaling((sx.item(), sy.item())), el
 
     def is_identity(self):
         return jnp.allclose(self.matrix, jnp.eye(3))
@@ -319,6 +317,7 @@ class Rotation(Transformation):
 
     @classmethod
     def centered(cls, θ: Scalar, center: PointI):
+        center = Point.mk(center)
         if center == Point.origin:
             return cls(θ)
         else:
@@ -348,8 +347,50 @@ class Scaling(Transformation):
             return Translation(v) @ sc @ Translation(-v)
 
 
+class ShearX(Transformation):
+    def __init__(self, m: Scalar):
+        super().__init__(jnp.array([
+            [1, m, 0],
+            [0, 1, 0],
+            [0, 0, 1]
+        ]))
+        self.factor = m
+        self.angle = jnp.arctan(m)
+
+    @classmethod
+    def from_angle(cls, θ: Scalar):
+        return cls(jnp.tan(θ))
+
+
+class ShearY(Transformation):
+    def __init__(self, m: Scalar):
+        super().__init__(jnp.array([
+            [1, 0, 0],
+            [m, 1, 0],
+            [0, 0, 1]
+        ]))
+        self.factor = m
+        self.angle = jnp.arctan(m)
+
+    @classmethod
+    def from_angle(cls, θ: Scalar):
+        return cls(jnp.tan(θ))
+
+
+class Elation(Transformation):
+    def __init__(self, vec: PointI):
+        vec = Point.mk(vec)
+        super().__init__(jnp.array([
+            [1, 0, 0],
+            [0, 1, 0],
+            [vec.x, vec.y, 1]
+        ]))
+        self.vec = vec
+
+
 class Reflection(Transformation):
     def __init__(self, line: 'LineI | Line'):
+        from ochra.core import Line
         if isinstance(line, Line):
             a, b, c = line.coef
         else:
