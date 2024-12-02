@@ -1,17 +1,18 @@
 
 import ochra as ox
+from ochra.text import Text
 from ochra.svg import save_svg
 from ochra.style import Palette
 
 font = ox.style.Font('Linux Libertine', size=60)
-blue = ox.style.Stroke(Palette.ios.b)
-green = ox.style.Stroke(Palette.ios.g)
-red = ox.style.Stroke(Palette.ios.r)
+blue = ox.style.Stroke(Palette.ios.blue)
+green = ox.style.Stroke(Palette.ios.green)
+red = ox.style.Stroke(Palette.ios.red)
 
-t0 = ox.Text("Abg", (0, 70), font=font)
-t1 = ox.Text("\"", (0, 0), font=font)
+t0 = Text("Abg", (0, 70), font=font)
+t1 = Text("\"", (0, 0), font=font)
 
-def text_anchors(t: ox.Text):
+def text_anchors(t: Text):
     return ox.Group([
         t,
         ox.Circle(1, t.visual_center(), stroke=red),

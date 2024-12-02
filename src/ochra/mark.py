@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from ochra.core import Group, Element, Canvas, Circle, LineSegment, AxisAlignedRectangle, Polygon
 from ochra.style import Fill, Color
-from ochra.geometry import Point, PointI, Transformation, Vector
+from ochra.geometry import Point, PointI, AffineTransformation, Vector
 
 
 class MarkerOrientation(Enum):
@@ -119,8 +119,6 @@ class Mark(Element):  # TODO: should probably be Annotation
     def aabb(self) -> 'Optional[AxisAlignedRectangle]':
         return Group(self.marker.elements).aabb().translate(self.point.x, self.point.y)
 
-    def transform(self, f: Transformation) -> 'Element':
+    def transform(self, f: AffineTransformation) -> 'Element':
         # Only transforms the location of the marker, not the marker itself
         return Mark(f(self.point), marker=self.marker)
-
-

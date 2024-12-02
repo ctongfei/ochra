@@ -1,7 +1,7 @@
 from functools import cached_property
 
-from ochra.geometry import Point, PointI, Transformation, Translation, Rotation
-from ochra.core import Element, AnyTransformed, Rectangle, AxisAlignedRectangle
+from ochra.geometry import Point, PointI, AffineTransformation, Translation, Rotation
+from ochra.core import Element, AnyAffinelyTransformed, Rectangle, AxisAlignedRectangle
 from ochra.style import Font, TextExtents, _text_extents
 
 
@@ -94,13 +94,13 @@ class Text(Element):
         tr = Translation((dx, dy))
         return Text(self.text, tr(self.bottom_left), self.angle, self.font)
 
-    def transform(self, f: Transformation) -> 'Element':
-        t, r, s = f.decompose()
-        if s.scale_if_scaling() == (1, 1):
+    def transform(self, f: AffineTransformation) -> 'Element':
+        t, r, _, s = f.decompose()
+        if s.scale.x == 1.0 and s.scale.y == -1.0:  # TODO
             return Text(self.text, t(self.bottom_left),
-                        self.angle + r.angle_if_rotation(), self.font)
+                        self.angle + r.angle, self.font)
         else:
-            return AnyTransformed(self, f)
+            return AnyAffinelyTransformed(self, f)
 
     def aabb(self) -> AxisAlignedRectangle:
         return self._rotated_actual_bbox.aabb()

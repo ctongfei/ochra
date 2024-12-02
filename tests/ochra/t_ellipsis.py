@@ -7,8 +7,9 @@ plus = ox.Marker.plus_mark(size=4)
 blue = ox.Stroke(width=8, color=oxs.Palette.solarized.blue)
 
 f0 = (0, 0)
-f1 = (-50, 50)
+f1 = (-50, 70)
 ell = ox.Ellipse.from_foci_and_major_axis(f0, f1, 120, stroke=blue)
+ell2 = ell.transform(ox.Rotation((30)))
 
 canvas = ox.Canvas(
     [

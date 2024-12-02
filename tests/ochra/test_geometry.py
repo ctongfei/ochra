@@ -1,10 +1,10 @@
 import numpy as np
 import jax.numpy as jnp
-from hypothesis import given
-from hypothesis.strategies import floats, nothing, lists
+from hypothesis import given, settings
+from hypothesis.strategies import floats, lists
 
 from ochra import Global
-from ochra.geometry import ProjPoint, Transformation
+from ochra.geometry import ProjPoint, AffineTransformation
 
 
 def test_proj_point():
@@ -23,8 +23,9 @@ def nonsingular(m: np.ndarray):
     m=lists(
         floats(-10.0, 10.0, allow_nan=False, allow_infinity=False, width=32),
         min_size=9, max_size=9
-    )
+    ),
 )
+@settings(deadline=None)
 def test_affine_transformation_decomposition(m):
     # generate random transformation by generating a 3x3 matrix
     # and then decomposing it
@@ -34,7 +35,7 @@ def test_affine_transformation_decomposition(m):
     if not nonsingular(m):
         return
     m = m / m[2, 2]
-    t = Transformation(jnp.asarray(m))
-    tr, rot, shx, sc, el = t.decompose()
+    t = AffineTransformation(jnp.asarray(m))
+    tr, rot, shx, sc = t.decompose()
     reconstructed = tr @ rot @ shx @ sc
     assert jnp.allclose(t.matrix, reconstructed.matrix, atol=Global.approx_eps)

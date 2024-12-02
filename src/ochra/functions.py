@@ -1,4 +1,3 @@
-import math
 from typing import Any, Iterable, TYPE_CHECKING
 import jax.numpy as jnp
 import jax
@@ -17,6 +16,18 @@ def f2s(x: Any) -> str:
         return f"{x:.4f}".rstrip("0").rstrip(".")
     else:
         return str(x)
+
+
+def ui2r(x: Scalar) -> Scalar:
+    return jnp.tan((x - 0.5) * τ / 2)
+
+
+def ui2pr(x: Scalar) -> Scalar:
+    return jnp.tan(x * τ / 2)
+
+
+def r2ui(x: Scalar) -> Scalar:
+    return 0.5 + jnp.arctan(x) * 2 / τ
 
 
 def lerp(a: Scalar, b: Scalar, t: Scalar) -> Scalar:
@@ -58,6 +69,8 @@ def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
     Solves the quadratic equation ax^2 + bx + c = 0.
     :return: a list of solutions, which can contain 0, 1, or 2 elements.
     """
+    if jnp.allclose(a, 0, atol=Global.approx_eps):
+        return solve_linear(b, c)
     d = b * b - 4 * a * c
     if jnp.allclose(d, 0, atol=Global.approx_eps):
         return [-b / (2 * a)]
@@ -70,27 +83,19 @@ def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
 
 def aligned_bbox_from_points(ps: Iterable[Point]) -> 'AxisAlignedRectangle':
     from ochra.core import AxisAlignedRectangle
-    l = float('inf')
-    u = -float('inf')
-    r = -float('inf')
-    b = float('inf')
-    for p in ps:
-        l = min(l, p.x)
-        r = max(r, p.x)
-        b = min(b, p.y)
-        u = max(u, p.y)
+    vecs = [p.loc for p in ps]
+    if len(vecs) == 0:
+        return AxisAlignedRectangle((0, 0), (0, 0))
+    all_vecs = jnp.stack(vecs)
+    l, b = jnp.min(all_vecs, axis=0)
+    r, u = jnp.max(all_vecs, axis=0)
     return AxisAlignedRectangle((l, b), (r, u))
 
 
 def aligned_bbox_from_bboxes(bboxes: 'Iterable[AxisAlignedRectangle]') -> 'AxisAlignedRectangle':
     from ochra.core import AxisAlignedRectangle
-    l = float('inf')
-    u = -float('inf')
-    r = -float('inf')
-    b = float('inf')
-    for bbox in bboxes:
-        l = min(l, bbox.bottom_left.x)
-        r = max(r, bbox.top_right.x)
-        b = min(b, bbox.bottom_left.y)
-        u = max(u, bbox.top_right.y)
+    lbs = [bbox.bottom_left.loc for bbox in bboxes]
+    rus = [bbox.top_right.loc for bbox in bboxes]
+    l, b = jnp.min(jnp.stack(lbs), axis=0)
+    r, u = jnp.max(jnp.stack(rus), axis=0)
     return AxisAlignedRectangle((l, b), (r, u))

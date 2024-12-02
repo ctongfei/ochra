@@ -1,10 +1,11 @@
 import xml.etree.ElementTree as ET
 from typing import Dict, ContextManager
 
-from ochra.core import *
-from ochra.functions import *
+from ochra.functions import f2s, rad_to_deg
+from ochra.geometry import *  # noqa: F403
+from ochra.core import *  # noqa: F403
 from ochra.style import *
-from ochra.mark import *
+from ochra.mark import Marker, MarkerConfig, Mark
 from ochra.text import Text
 
 
@@ -67,7 +68,7 @@ def font_to_css(font: Font) -> Dict[str, str]:
     return {**family, **size, **weight, **style}
 
 
-def transformation_to_css(t: Transformation) -> dict[str, str]:
+def transformation_to_css(t: AffineTransformation) -> dict[str, str]:
     m = t.matrix / t.matrix[2, 2]
     [a, c, e, b, d, f] = m[:2, :].flatten()
     s = ' '.join(f2s(x.item()) for x in [a, b, c, d, e, f])
@@ -83,7 +84,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         )
         g.extend([element_to_svg(c, e) for e in e.elements])
         return g
-    if isinstance(e, AnyTransformed):
+    if isinstance(e, AnyAffinelyTransformed):
         g = ET.Element(
             "g",
             **transformation_to_css(e.transformation),
@@ -99,14 +100,14 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             flip = Scaling((1, -1))
             return element_to_svg(
                 c,
-                AnyTransformed(
+                AnyAffinelyTransformed(
                     Text(e.text, e.bottom_left, angle=0.0, font=e.font),
                     Rotation.centered(-e.angle, flip(e.bottom_left))
                 )
             )
         else:
             t = ET.Element(
-                "text.py",
+                "text",
                 x=f2s(e.visual_bbox().bottom_left.x),
                 y=f2s(-e.visual_bbox().bottom_left.y),
                 **font_to_css(e.font),
@@ -121,19 +122,11 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             href=f"#symbol-{e.marker.name}",
         )  # conform to SVG 1.1 standard, can't use refX, refY
     elif isinstance(e, Line):
-        intersection = intersect_line_aabb(e, c.viewport)
-        if intersection is None:
+        segment = clip_line_aabb(e, c.viewport)
+        if segment is None:
             return ET.Element("group")
-        elif isinstance(intersection, Point):
-            # TODO: draw a dot?
-            pass
-        elif isinstance(intersection, list):
-            p0, p1 = intersection
-            θ = LineSegment(p0, p1).angle
-            d = Vector.unit(θ) * (e.stroke.width or 1.0)  # should * 0.5, but be conservative
-            if (p1 - p0).dot(d) < 0:
-                d = -d
-            return element_to_svg(c, LineSegment(p0 + (-d), p1 + d, stroke=e.stroke))
+        else:
+            return element_to_svg(c,segment)
     elif isinstance(e, LineSegment):
         return ET.Element(
             "line",
@@ -184,16 +177,11 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             **fill_to_css(e.fill),
         )
     elif isinstance(e, Parabola):
-        ts = [t for s in c.viewport.edges for t in intersect_segment_conic_param(s, e)]
-        if len(ts) == 0:
+        segment = clip_parabola_aabb(e, c.viewport)
+        if segment is None:
             return ET.Element("group")
-        tmin, tmax = min(ts), max(ts)
-        p0 = e.at(tmin)
-        p1 = e.at(tmax)
-        t0 = e.tangent_vector_at(tmin)
-        t1 = e.tangent_vector_at(tmax)
-        c = get_quadratic_bezier_curve_control_point_by_tangent(p0, t0, p1, t1)
-        return element_to_svg(c, QuadraticBezierCurve.from_points(p0, c, p1, stroke=e.stroke))
+        else:
+            return element_to_svg(c, segment)
         
     elif isinstance(e, QuadraticBezierCurve):
         return ET.Element(
