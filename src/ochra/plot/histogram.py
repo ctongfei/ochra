@@ -1,6 +1,7 @@
 from collections.abc import Collection, Sequence
 
-from ochra.core import AxisAlignedRectangle, Text, Element, Group
+from ochra.core import AxisAlignedRectangle, Element, Group
+from ochra.text import Text
 from ochra.plot import Plot, Axis
 from ochra.plot.transform import histogram
 from ochra.style import Stroke, Fill, Font

@@ -1,6 +1,7 @@
 from typing import Collection, Optional, Tuple
 
-from ochra.core import Element, Text, Group, Polyline
+from ochra.core import Element, Group, Polyline
+from ochra.text import Text
 from ochra.style import Font, Stroke
 from ochra.mark import Mark, Marker
 from ochra.geometry import Point

@@ -1,12 +1,9 @@
 import math
 from dataclasses import replace
 
-from ochra.marker import Marker
 from ochra.geometry import Point
-from ochra.poly import Polygon, Polyline
-from ochra.rect import AxisAlignedRectangle
-from ochra.style.fill import Fill
-from ochra.style.stroke import LineJoin, Stroke
+from ochra.core import Polygon, Polyline, AxisAlignedRectangle, Marker
+from ochra.style import Stroke, Fill, LineJoin
 
 
 class Arrowhead:
@@ -29,7 +26,7 @@ def _arrow_triangle_base(size: float, angle: float, **kwargs):
             Point.polar(size, math.tau / 2 + angle)
         ],
         **kwargs
-    ).Translation(-size, 0)  # center at arrow tip
+    ).translate(-size, 0)  # center at arrow tip
 
 
 def arrow_triangle(size: float = 5.0, angle: float = math.degrees(30), **kwargs):

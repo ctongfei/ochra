@@ -204,6 +204,7 @@ class Parametric(Element):
     def derivative(self):
         """
         Computes the derivative of the parametric function.
+        Consider an object moving along the curve. The derivative is the velocity vector.
         """
         return jax.jit(jax.jacfwd(self.at))  # cache this
 

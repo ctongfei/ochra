@@ -1,7 +1,7 @@
 import ochra as ox
 import ochra.plot as oxp
-from ochra.style.palette import nord
-from ochra.style.colormap import viridis
+from ochra.palettes import nord
+from ochra.style import Colormap
 
 import numpy as np
 
@@ -13,12 +13,12 @@ plot = oxp.Chart(
     x_axis=oxp.DiscreteAxis("x", range(16)),
     y_axis=oxp.DiscreteAxis("y", range(16)),
     plots=[
-        oxp.HeatMap(data, colormap=viridis, palette=nord)
+        oxp.HeatMap(data, colormap=Colormap.viridis, palette=nord)
     ],
     palette=nord
 )
 
 c = ox.Canvas(elements=[plot.draw()])
 
-ox.save_svg(c, "test.svg")
+ox.svg.save_svg(c, "test.svg")
 

@@ -62,6 +62,22 @@ class Colormap:
     def __call__(self, t: float) -> Color:
         raise NotImplementedError
 
+    @classproperty
+    def viridis(cls) -> "Colormap":
+        return InterpolatedColormap._from_matplotlib_data(_viridis_data)
+
+    @classproperty
+    def magma(cls) -> "Colormap":
+        return InterpolatedColormap._from_matplotlib_data(_magma_data)
+
+    @classproperty
+    def inferno(cls) -> "Colormap":
+        return InterpolatedColormap._from_matplotlib_data(_inferno_data)
+
+    @classproperty
+    def plasma(cls) -> "Colormap":
+        return InterpolatedColormap._from_matplotlib_data(_plasma_data)
+
 
 class InterpolatedColormap(Colormap):
 
@@ -86,22 +102,6 @@ class InterpolatedColormap(Colormap):
     @classmethod
     def _from_matplotlib_data(cls, data: list[tuple[float, float, float]]) -> Colormap:
         return cls([Color.from_rgb(*rgb) for rgb in data])
-
-    @classproperty
-    def viridis(cls) -> Colormap:
-        return cls._from_matplotlib_data(_viridis_data)
-
-    @classproperty
-    def magma(cls) -> Colormap:
-        return cls._from_matplotlib_data(_magma_data)
-
-    @classproperty
-    def inferno(cls) -> Colormap:
-        return cls._from_matplotlib_data(_inferno_data)
-
-    @classproperty
-    def plasma(cls) -> Colormap:
-        return cls._from_matplotlib_data(_plasma_data)
 
 
 class LineCap(Enum):

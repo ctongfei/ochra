@@ -1,3 +1,4 @@
+import math
 from collections.abc import Collection
 from enum import Enum
 from typing import Optional
@@ -5,7 +6,7 @@ from dataclasses import dataclass
 
 from ochra.core import Group, Element, Canvas, Circle, LineSegment, AxisAlignedRectangle, Polygon
 from ochra.style import Fill, Color
-from ochra.geometry import Point, PointI, AffineTransformation, Vector
+from ochra.geometry import Point, PointI, AffineTransformation, Vector, τ
 
 
 class MarkerOrientation(Enum):
@@ -41,56 +42,54 @@ class Marker:
         return Canvas(self.elements, self.viewport)
 
     @classmethod
-    def bullet(cls, size: float = 0.75, **kwargs):
+    def bullet(cls, size: float = 2, **kwargs):
         if "fill" not in kwargs:
             if "stroke" in kwargs:
                 kwargs['fill'] = Fill(color=kwargs['stroke'].color)
             else:
                 kwargs['fill'] = Fill(color=Color(0, 0, 0))
         return cls(
-            [Circle(radius=size, **kwargs)],
-            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
-        )
-
-    @classmethod
-    def circle(cls, size: float = 2.0, **kwargs):
-        return cls(
-            [Circle(radius=size, **kwargs)],
-            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
-        )
-
-    @classmethod
-    def tick(cls, size: float = 2, angle: float = 0.0, **kwargs):
-        return cls(
-            [LineSegment((0, 0), (Vector.unit(angle) * size).to_point(), **kwargs)],
+            [Circle(radius=size / 2, **kwargs)],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 
     @classmethod
-    def x_mark(cls, size: float = 2, **kwargs):
+    def circle(cls, size: float = 3, **kwargs):
         return cls(
-            [
-                LineSegment((-size, -size), (size, size), **kwargs),
-                LineSegment((-size, size), (size, -size), **kwargs),
-            ],
-            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
+            [Circle(radius=size / 2, **kwargs)],
+            viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 
     @classmethod
-    def plus_mark(cls, size: float = 2.5, **kwargs):
+    def asterisk(cls, n: int, size: float = 4, angle: float = τ / 4, **kwargs):
         return cls(
             [
-                LineSegment((-size, 0), (size, 0), **kwargs),
-                LineSegment((0, -size), (0, size), **kwargs),
+                LineSegment((0, 0), (Vector.unit(angle + τ * i / n) * (size / 2)).to_point(), **kwargs)
+                for i in range(n)
             ],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 
     @classmethod
-    def polygon(cls, n: int, size: float = 2.0, angle: float = 0, **kwargs):
+    def tick(cls, size: float = 4, angle: float = 0.0, **kwargs):
+        return Marker.asterisk(1, size, angle, **kwargs)
+
+    @classmethod
+    def x_mark(cls, size: float = 4, **kwargs):
+        return Marker.asterisk(4, size, angle=τ / 8, **kwargs)
+
+    @classmethod
+    def plus_mark(cls, size: float = 4, **kwargs):
+        return Marker.asterisk(4, size, angle=0, **kwargs)
+
+    @classmethod
+    def polygon(cls, n: int, size: float = 4, angle: float = τ / 4, **kwargs):
+        width = kwargs.get("stroke", {}).get("width", 1.0)
+        θ = τ / 2 - τ / n
+        size -= 0.5 * width / math.sin(θ / 2)
         return cls(
-            [Polygon.regular(n, circumradius=size, **kwargs).rotate(angle)],
-            viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
+            [Polygon.regular(n, circumradius=size / 2, **kwargs).rotate(angle)],
+            viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 
     @classmethod

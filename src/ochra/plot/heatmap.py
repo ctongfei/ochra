@@ -1,4 +1,4 @@
-from ochra.core import Element, Group
+from ochra.core import Element, Group, AxisAlignedRectangle
 from ochra.plot import Plot, Axis
 from ochra.plot.collections import X, Y, standardize_2d, Mapping2D
 from ochra.style import Stroke, Palette, Fill, Font, Colormap, InterpolatedColormap

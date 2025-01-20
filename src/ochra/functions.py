@@ -96,6 +96,8 @@ def aligned_bbox_from_bboxes(bboxes: 'Iterable[AxisAlignedRectangle]') -> 'AxisA
     from ochra.core import AxisAlignedRectangle
     lbs = [bbox.bottom_left.loc for bbox in bboxes]
     rus = [bbox.top_right.loc for bbox in bboxes]
+    if len(lbs) == 0 or len(rus) == 0:
+        return AxisAlignedRectangle((0, 0), (0, 0))
     l, b = jnp.min(jnp.stack(lbs), axis=0)
     r, u = jnp.max(jnp.stack(rus), axis=0)
     return AxisAlignedRectangle((l, b), (r, u))

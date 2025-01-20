@@ -7,7 +7,7 @@ from typing import Collection, Generic, Tuple, Optional
 from ochra.core import *
 from ochra.mark import Marker
 from ochra.mark import Mark
-from ochra.geometry import Point, Vector, Translation, scale
+from ochra.geometry import Point, Vector, Translation, Scaling
 from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
 from ochra.plot.collections import X, Y
@@ -89,11 +89,11 @@ class Chart(Generic[X, Y]):
         y_scale = self.y_size / (Y.locate_upper_bound() - Y.locate_lower_bound())
         grid = self._draw_grid()
         tr_x = (Translation((-X.locate_lower_bound(), 0))
-                @ scale((x_scale, 1)))
+                @ Scaling((x_scale, 1)))
         tr_y = (Translation((0, -Y.locate_lower_bound()))
-                @ scale((1, y_scale)))
+                @ Scaling((1, y_scale)))
         tr_xy = Translation((-X.locate_lower_bound(), -Y.locate_lower_bound())) \
-                @ scale((x_scale, y_scale))
+                @ Scaling((x_scale, y_scale))
 
         self.background_rectangle = rect_bg
         self.grid = grid.transform(tr_xy)

@@ -1,6 +1,7 @@
 from typing import Collection, Tuple
 
-from ochra.core import Element, Group, Text
+from ochra.core import Element, Group
+from ochra.text import Text
 from ochra.style import Font, Fill, Stroke
 from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
