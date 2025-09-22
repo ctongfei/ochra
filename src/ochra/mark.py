@@ -75,11 +75,11 @@ class Marker:
         return Marker.asterisk(1, size, angle, **kwargs)
 
     @classmethod
-    def x_mark(cls, size: float = 4, **kwargs):
+    def cross(cls, size: float = 4, **kwargs):
         return Marker.asterisk(4, size, angle=τ / 8, **kwargs)
 
     @classmethod
-    def plus_mark(cls, size: float = 4, **kwargs):
+    def plus(cls, size: float = 4, **kwargs):
         return Marker.asterisk(4, size, angle=0, **kwargs)
 
     @classmethod

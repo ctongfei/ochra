@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Optional, Union
-import numpy as np
+import jax.numpy as jnp
 
 from ochra.core import AxisAlignedRectangle, Element, Group
 from ochra.style import Color, Fill, Stroke
@@ -75,10 +75,10 @@ class Table(Group):
         self.num_rows = len(cells)
         self.num_cols = max(len(cells[i]) for i in range(self.num_rows))
 
-        col_alignment = col_alignment or [HorizontalAlignment.LEFT for _ in range(self.num_cols)]
-        row_alignment = row_alignment or [VerticalAlignment.BOTTOM for _ in range(self.num_rows)]
+        col_alignment = col_alignment or [HorizontalAlignment.CENTER for _ in range(self.num_cols)]
+        row_alignment = row_alignment or [VerticalAlignment.CENTER for _ in range(self.num_rows)]
 
-        cell_bboxes = [[cell.aabb() for cell in row] for row in cells]
+        cell_bboxes = [[cell.visual_bbox() for cell in row] for row in cells]
         row_heights = row_heights or [None for _ in range(self.num_rows)]
         col_widths = col_widths or [None for _ in range(self.num_cols)]
         self.row_heights = [
@@ -89,8 +89,8 @@ class Table(Group):
             col_widths[j] or (max(cell_bboxes[i][j].width for i in range(self.num_rows)) + 2 * cell_horizontal_padding)
             for j in range(self.num_cols)
         ]
-        cols_x = np.cumsum([0] + self.col_widths).tolist()
-        rows_y = list(reversed(np.cumsum([0] + self.row_heights)))
+        cols_x = jnp.cumsum(jnp.array([0] + self.col_widths)).tolist()
+        rows_y = list(reversed(jnp.cumsum(jnp.array([0] + self.row_heights))))
         boxes = [
             [
                 AxisAlignedRectangle(

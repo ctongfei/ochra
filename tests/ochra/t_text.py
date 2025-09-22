@@ -2,12 +2,12 @@
 import ochra as ox
 from ochra.text import Text
 from ochra.svg import save_svg
-from ochra.style import Palette
+from ochra.palettes import ios
 
 font = ox.style.Font('Linux Libertine', size=60)
-blue = ox.style.Stroke(Palette.ios.blue)
-green = ox.style.Stroke(Palette.ios.green)
-red = ox.style.Stroke(Palette.ios.red)
+blue = ox.style.Stroke(ios.blue)
+green = ox.style.Stroke(ios.green)
+red = ox.style.Stroke(ios.red)
 
 t0 = Text("Abg", (0, 70), font=font)
 t1 = Text("\"", (0, 0), font=font)

@@ -1,15 +1,15 @@
 import ochra as ox
-import ochra.style as oxs
 from ochra.svg import save_svg
+from ochra.functions import deg_to_rad
 
-cross = ox.Marker.x_mark(size=4)
-plus = ox.Marker.plus_mark(size=4)
-blue = ox.Stroke(width=8, color=oxs.Palette.solarized.blue)
+cross = ox.Marker.cross(size=4)
+plus = ox.Marker.plus(size=4)
+blue = ox.Stroke(width=6, color=ox.palettes.ios.blue)
 
 f0 = (0, 0)
 f1 = (-50, 70)
 ell = ox.Ellipse.from_foci_and_major_axis(f0, f1, 120, stroke=blue)
-ell2 = ell.transform(ox.Rotation((30)))
+ell2 = ell.transform(ox.Rotation(deg_to_rad(30)))
 
 canvas = ox.Canvas(
     [
@@ -25,7 +25,7 @@ canvas = ox.Canvas(
             ox.LineSegment(ell.covertex0, ell.covertex1),
             ell.directrix0(),
             ell.directrix1(),
-            ell.trace_quadratic_bezier_path(step=32, num_steps=16, markers=ox.MarkerConfig(mid=plus))
+            ell.trace_quadratic_bezier_path(step=32, num_steps=16, markers=ox.mark.MarkerConfig(mid=plus))
         ]),
     ],
     viewport=ox.AxisAlignedRectangle((-200, -200), (200, 200))

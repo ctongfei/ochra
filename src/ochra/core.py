@@ -1,17 +1,29 @@
+import copy
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import chain
 import math
-from typing import Optional, TYPE_CHECKING, Self, cast
+from typing import (
+    Optional,
+    TYPE_CHECKING,
+    Self,
+    cast,
+    NoReturn,
+    Generic,
+    TypeVar,
+    overload,
+    Any,
+    Protocol,
+)
 
 import numpy as np  # TODO: get rid of
 import jax
 import jax.numpy as jnp
-import jax.random as jrandom
+from jaxtyping import Float
 
-from ochra.util import Global
+from ochra.util import Global, expected
 from ochra.geometry import (
     τ,
     Scalar,
@@ -21,17 +33,15 @@ from ochra.geometry import (
     Vector,
     VectorI,
     LineI,
-    RigidTransformation,
     AffineTransformation,
     ProjectiveTransformation,
     Translation,
     Rotation,
     Scaling,
-    Reflection,
     ConicI,
-    ShearX,
-    ShearY,
-
+    PointSequenceI,
+    PointSequence,
+    RigidTransformation,
 )
 from ochra.style import Stroke, Fill
 from ochra.functions import (
@@ -51,25 +61,31 @@ if TYPE_CHECKING:
     from ochra.mark import Marker, MarkerConfig
 
 
+class TranslationalInvariant[TrsE]:
+    def trans_transform(self, f: Translation) -> TrsE: ...
+
+
+class RigidInvariant[RigE]:
+    def rigid_transform(self, f: RigidTransformation) -> RigE: ...
+
+
+class AffineInvariant[AffE]:
+    def aff_transform(self, f: AffineTransformation) -> AffE: ...
+
+
+class ProjectiveInvariant[ProjE]:
+    def proj_transform(self, f: ProjectiveTransformation) -> ProjE: ...
+
 class Element(ABC):
     """
     Base class for all drawable elements.
     """
 
-    def transform(self, f: AffineTransformation) -> 'Element':
-        """
-        Transforms this element using the given transformation.
-        Should be overridden by subclasses if possible.
-        :param f: The given transformation.
-        :return: A new element where every point is transformed.
-        """
-        return AnyAffinelyTransformed(self, f)  # fallback
-
     def aabb(self) -> 'AxisAlignedRectangle | None':
         """
         Returns the axis-aligned bounding box of this element.
         Should always be overridden by subclasses.
-        None if the bounding box is not defined in the case that the element is infinite.
+        `None` if the bounding box is not defined in the case that the element is infinite.
         """
         raise NotImplementedError(f"aabb() is not implemented for type {type(self)}.")
 
@@ -87,33 +103,15 @@ class Element(ABC):
     def visual_bbox(self) -> 'AxisAlignedRectangle':
         """
         Returns the visual bounding box of this element.
-        This is not necessarily the same as the geometric bounding box.
+        This is not necessarily the same as the geometric bounding box. If this is the case, override this method.
         For example, for text, the visual bounding box should be placed at the baseline of the text.
         """
         aabb = self.aabb()
         assert aabb is not None
         return aabb
 
-    def translate(self, dx: float, dy: float) -> 'Element':
-        return self.transform(Translation((dx, dy)))
 
-    def rotate(self, angle: float, anchor: PointI = Point.origin) -> 'Element':
-        return self.transform(Rotation.centered(angle, Point.mk(anchor)))
-
-    def scale(self, sx: float, sy: float, anchor: PointI = Point.origin) -> 'Element':
-        return self.transform(Scaling.centered((sx, sy), Point.mk(anchor)))
-
-    def shear_x(self, m: Scalar) -> 'Element':
-        return self.transform(ShearX(m))
-
-    def shear_y(self, m: Scalar) -> 'Element':
-        return self.transform(ShearY(m))
-
-    def reflect(self, axis: LineI) -> 'Element':
-        return self.transform(Reflection(axis))
-
-
-class AnyAffinelyTransformed(Element):
+class AnyAffinelyTransformed(Element, AffineInvariant['AnyAffinelyTransformed']):
     """
     Fallback class for affinely transformed elements.
     At rendering time, objects of this class will be rendered by the SVG transform attribute.
@@ -123,14 +121,14 @@ class AnyAffinelyTransformed(Element):
         self.element = element
         self.transformation = transformation
 
-    def transform(self, f: AffineTransformation) -> 'AnyAffinelyTransformed':
+    def aff_transform(self, f: AffineTransformation) -> 'AnyAffinelyTransformed':
         return AnyAffinelyTransformed(self.element, f @ self.transformation)
 
     def aabb(self) -> 'AxisAlignedRectangle | None':
         old_bbox = self.element.aabb()
         if old_bbox is None:
             return None
-        return old_bbox.transform(self.transformation).aabb()
+        return transform(old_bbox, self.transformation).aabb()
 
 
 class Group(Element):
@@ -141,7 +139,7 @@ class Group(Element):
     def __init__(self, elements: Collection[Element]):
         self.elements = elements
 
-    def aabb(self) -> 'AxisAlignedRectangle':
+    def aabb(self) -> 'AxisAlignedRectangle | None':
         bboxes = [e.aabb() for e in self.elements]
         return aligned_bbox_from_bboxes(bboxes)
 
@@ -150,18 +148,17 @@ class Group(Element):
         return aligned_bbox_from_bboxes(bboxes)
 
     def recursive_children(self) -> Iterator[Element]:
+        """
+        Traverses the group tree and yields all the non-group elements.
+        """
         for e in self.elements:
             if isinstance(e, Group):
                 yield from e.recursive_children()
             else:
                 yield e
 
-    def transform(self, f: AffineTransformation) -> 'Group':
-        new_elements = [e.transform(f) for e in self.elements]
-        return Group(new_elements)
 
-
-class Annotation(Element):
+class Annotation(Element, ProjectiveInvariant['Annotation']):
     """
     Annotations are special elements that do not scale or rotate by transformations.
     """
@@ -174,19 +171,21 @@ class Annotation(Element):
         self.anchor = Point.mk(anchor)
         self.materialize_at = func
 
-    def aabb(self) -> 'Optional[AxisAlignedRectangle]':
+    def aabb(self) -> 'AxisAlignedRectangle | None':
         return self.materialize().aabb()
 
     def materialize(self) -> Element:
         return self.materialize_at(self.anchor)
 
-    def transform(self, f: AffineTransformation) -> 'Annotation':
-        return Annotation(f(self.anchor), self.materialize_at)
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Annotation':
+        new_anchor = f(self.anchor)
+        assert new_anchor is not None, "Annotations cannot be transformed to infinity."
+        return Annotation(new_anchor, self.materialize_at)
 
 
 class Parametric(Element):
-    """
-    Represents any shape whose points can be parameterized by a single parameter `t` in [0, 1].
+    r"""
+    Represents any shape $[0, 1] \to \mathbb{R}^2$ whose points can be parameterized by a single parameter $t \in [0, 1]$.
     """
 
     stroke: Stroke
@@ -202,22 +201,23 @@ class Parametric(Element):
 
     @cached_property
     def derivative(self):
-        """
-        Computes the derivative of the parametric function.
-        Consider an object moving along the curve. The derivative is the velocity vector.
+        r"""
+        Computes the derivative $\dfrac{{\rm d}\mathbf{x}}{{\rm d}t}$ of the parametric function.
+        Consider an object moving along the curve: the derivative is the velocity vector.
         """
         return jax.jit(jax.jacfwd(self.at))  # cache this
 
     def at(self, t: Scalar) -> Point:
         """
-        Returns the point at parameter `t`.
+        Returns the point at parameter $t$.
         :param t: A parameter in [0, 1].
         """
         raise NotImplementedError
 
     def tangent_vector_at(self, t: Scalar) -> Vector:
         """
-        Returns the normalized tangent vector at parameter `t`.
+        Returns the normalized tangent vector at parameter $t$.
+        This is computed via automatic differentiation of the parametric function `at(t)`.
         :param t: A parameter in [0, 1].
         """
         g = self.derivative(t)
@@ -225,7 +225,7 @@ class Parametric(Element):
 
     def tangent_line_at(self, t: Scalar) -> "Line":
         """
-        Returns the tangent line at parameter `t`.
+        Returns the tangent line at parameter $t$.
         :param t: A parameter in [0, 1].
         """
         return Line.from_point_and_vector(self.at(t), self.tangent_vector_at(t))
@@ -237,6 +237,8 @@ class Parametric(Element):
     ) -> Element:
         """
         Approximates the element as a polyline, or a group of polylines if not continuous.
+        :param num_samples_per_piece: The number of samples per continuous piece.
+        :param boundary_eps: The epsilon to add to the boundary of each piece.
         """
         stroke = getattr(self, "stroke", None)
         pls = []
@@ -284,11 +286,21 @@ class Parametric(Element):
         else:
             return Group(qbps)
 
-    def transform(self, f: ProjectiveTransformation) -> 'Parametric':
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Parametric':
         return ParametricFromFunction(lambda t: cast(Point, f(self.at(t))), stroke=self.stroke)
 
     def slice(self, t0: Scalar, t1: Scalar) -> 'Parametric':
+        """
+        Returns the subcurve between parameters $t_0$ and $t_1$.
+        """
+        assert 0 <= t0 < t1 <= 1, f"Invalid slice: {t0} -> {t1}"
         return ParametricSlice(self, t0, t1, stroke=self.stroke)
+
+    def with_stroke(self, stroke: Stroke) -> Self:
+        """Returns a copy of the element with a new stroke."""
+        dup = copy.deepcopy(self)
+        dup.stroke = stroke
+        return dup
 
     @staticmethod
     def from_func(func: Callable[[Scalar], Point], stroke: Stroke = Stroke()) -> 'Parametric':
@@ -338,7 +350,7 @@ class ParametricFromFunction(Parametric):
     def at(self, t: Scalar) -> Point:
         return self.func(t)
 
-    def transform(self, f: AffineTransformation) -> Parametric:
+    def aff_transform(self, f: AffineTransformation) -> Parametric:
         return ParametricFromFunction(lambda t: f(self.func(t)), stroke=self.stroke)
 
 
@@ -362,8 +374,8 @@ class JoinedParametric(Group, Parametric):
             t0 = t * n - i
             return self.shapes[i].at(t0)
 
-    def transform(self, f: AffineTransformation) -> 'JoinedParametric':
-        return JoinedParametric([s.transform(f) for s in self.shapes])
+    def proj_transform(self, f: ProjectiveTransformation) -> 'JoinedParametric':
+        return JoinedParametric([transform(s, f) for s in self.shapes])
 
 
 class FunctionGraph(Parametric):
@@ -388,16 +400,24 @@ class FunctionGraph(Parametric):
         return Point.mk(x, y)
 
 
-class Implicit(ABC):
+class Implicit(Element):
+    r"""
+    Represents an implicit curve defined by an implicit function $f(x, y) = 0$.
+    The points on the curve are those that satisfy the equation.
+    """
 
-    @abstractmethod
-    def implicit_func(self, p: Point) -> jax.Array:
-        """A function z = f(x, y) such that z = 0 defines the implicit curve."""
+    def implicit_func(self, p: Point) -> Float[jax.Array, ""]:
+        r"""
+        A function $z = f(x, y)$ such that $z = 0$ defines the implicit curve.
+        :param p: A point $(x, y)$.
+        :return: The value of the implicit function at the point.
+            Note that the type should be a Jax array of dimensionality 0 to ensure differentiability.
+        """
         raise NotImplementedError
 
     @cached_property
     def gradient(self):
-        """Computes the gradient of the implicit function."""
+        r"""Computes the gradient $\dfrac{{\rm d}f}{{\rm d}\mathbf{x}}$ of the implicit function."""
         return jax.jit(jax.jacrev(self.implicit_func))
 
     def _normal_vector_at_point(self, p: Point) -> Vector:
@@ -413,7 +433,7 @@ class Implicit(ABC):
             g = self.gradient(p0).to_vector()
             g_norm = g.norm()
             if g_norm == 0.0 or jnp.isnan(g_norm):
-                p0 = p0 + Vector(jnp.array(np.random.normal(size=2)))
+                p0 = p0 + Vector(jnp.array(np.random.normal(size=2)))  # perturb
                 continue
             p1 = p0 + g * (-self.implicit_func(p0) / g_norm / g_norm)
             dist = (p1 - p0).norm()
@@ -432,6 +452,15 @@ class Implicit(ABC):
             eps: float = Global.approx_eps,
             **kwargs
     ) -> Element:
+        """
+        Traces a polyline on the implicit curve starting from point `p0`.
+        :param p0: The starting point.
+        :param num_steps: The number of steps to trace.
+        :param step: The step size.
+        :param eps: The precision.
+        :param kwargs: Other parameters for the polyline (e.g. stroke, fill, etc.).
+        :return: A polyline.
+        """
         p0 = self._get_point(p0, eps)
         t = self._tangent_vector_at_point(p0)
         points = [p0]
@@ -448,7 +477,7 @@ class Implicit(ABC):
             step: float = Global.second_order_step_size,
             eps: float = Global.approx_eps,
             **kwargs
-    ) -> Element:
+    ) -> "QuadraticBezierPath":
         p0 = self._get_point(p0, eps)
         points = [p0]
         tangent_vectors = [self._tangent_vector_at_point(p0)]
@@ -467,22 +496,30 @@ class Implicit(ABC):
         qbp = QuadraticBezierPath.from_points(points, control_points, **kwargs)
         return qbp
 
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Implicit':
+        return ImplicitCurve(lambda p: self.implicit_func(f.inverse().unsafe_apply(p)))
+
 
 class ImplicitCurve(Implicit):
 
-    def __init__(self, func: Callable[[Point], jax.Array]):
+    def __init__(self, func: Callable[[Point], Float[jax.Array, ""]]):
         self._func = func
 
-    def implicit_func(self, p: Point) -> jax.Array:
+    def implicit_func(self, p: Point) -> Float[jax.Array, ""]:
         return self._func(p)
 
 
-class Line(Parametric, Implicit):
+class Line(Parametric, Implicit, ProjectiveInvariant['Line']):
+    r"""
+    Represents a mathematical line $ax + by + c = 0$ in the plane (infinite in both directions).
+    Not to be confused with a line segment (LineSegment).
+    """
 
     def __init__(self, coef: LineI, stroke: Stroke = Stroke()):
-        if isinstance(coef, tuple):
-            coef = jnp.array(coef)
-        self.coef = jnp.array(coef)  # [a, b, c], projective coefficients
+        if not isinstance(coef, jax.Array):
+            self.coef = jnp.array(coef)  # [a, b, c], projective coefficient
+        else:
+            self.coef = coef
         assert self.coef.shape == (3,)
         self.stroke = stroke
 
@@ -508,21 +545,33 @@ class Line(Parametric, Implicit):
 
     @property
     def angle(self) -> Scalar:
+        """
+        Returns the angle of the line with the positive x-axis.
+        """
         return -jnp.atan2(self._a, self._b)
 
     @property
     def slope(self) -> Scalar:
+        """
+        Returns the slope of the line.
+        """
         return -self._a / self._b
 
     @property
     def y_intercept(self) -> Scalar:
+        """
+        Returns the y-intercept of the line.
+        """
         return +self._c / self._b
 
     @property
     def x_intercept(self) -> Scalar:
+        """
+        Returns the x-intercept of the line.
+        """
         return +self._c / self._a
 
-    def aabb(self) -> 'Optional[AxisAlignedRectangle]':
+    def aabb(self) -> 'AxisAlignedRectangle | None':
         return None
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
@@ -531,7 +580,7 @@ class Line(Parametric, Implicit):
     def __contains__(self, p: Point):
         return jnp.isclose(self.implicit_func(p), 0.0, atol=Global.approx_eps)
 
-    def implicit_func(self, p: Point) -> jax.Array:
+    def implicit_func(self, p: Point) -> Float[jax.Array, ""]:
         return jnp.dot(self.coef, p.to_proj_point().loc)
 
     def at(self, t: Scalar) -> Point:
@@ -542,7 +591,7 @@ class Line(Parametric, Implicit):
             d = 1.0  # TODO: ?
         return p0 + (Vector.unit(self.angle) * d * ui2r(t))
 
-    def transform(self, f: ProjectiveTransformation) -> 'Line':
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Line':
         v = f.inverse().matrix.T.dot(self.coef)
         return Line(v, stroke=self.stroke)
 
@@ -566,6 +615,13 @@ class Line(Parametric, Implicit):
     @classmethod
     def x_axis(cls):
         return cls((0, 1, 0))
+
+    @classmethod
+    def mk(cls, l: 'LineI | Line'):
+        if isinstance(l, Line):
+            return l
+        else:
+            return cls(l)
 
     @classmethod
     def from_two_points(cls, p0: PointI, p1: PointI, **kwargs):
@@ -616,14 +672,14 @@ class Ray(Parametric):
         d = Vector.unit(self.angle)
         return self.origin + d * ui2pr(t)
 
-    def aabb(self) -> 'Optional[AxisAlignedRectangle]':
+    def aabb(self) -> 'AxisAlignedRectangle | None':
         return None
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
         return aligned_bbox_from_points([self.at(0.0), self.at(0.75)])
 
 
-class LineSegment(Parametric):
+class LineSegment(Parametric, ProjectiveInvariant['LineSegment']):
 
     def __init__(self,
                  p0: PointI,
@@ -667,7 +723,7 @@ class LineSegment(Parametric):
         return Line.from_two_points(self.p0, self.p1)
 
     def as_vector(self) -> Vector:
-        return Vector(self.p1.x - self.p0.x, self.p1.y - self.p0.y)
+        return Vector.mk(self.p1.x - self.p0.x, self.p1.y - self.p0.y)
 
     def at(self, t: Scalar):
         return lerp_point(self.p0, self.p1, t)
@@ -690,25 +746,28 @@ class LineSegment(Parametric):
             Point.mk(max(self.p0.x, self.p1.x), max(self.p0.y, self.p1.y))
         )
 
-    def transform(self, f: AffineTransformation) -> 'LineSegment':
+    def proj_transform(self, f: ProjectiveTransformation) -> 'LineSegment':
+        p0 = f(self.p0)
+        p1 = f(self.p1)
+        assert p0 is not None and p1 is not None, "Line segments cannot be transformed to infinity."
         return LineSegment(
-            f(self.p0), f(self.p1),
+            p0, p1,
             stroke=self.stroke,
             marker_start=self.marker_start,
             marker_end=self.marker_end
         )
 
 
-class Polyline(Parametric):
+class Polyline(Parametric, ProjectiveInvariant['Polyline']):
 
     def __init__(self,
-                 vertices: Sequence[PointI],
+                 vertices: PointSequenceI,
                  stroke: Stroke = Stroke(),
                  marker_start: Optional['Marker'] = None,
                  marker_mid: Optional['Marker'] = None,
                  marker_end: Optional['Marker'] = None,
                  ):
-        self.vertices = [Point.mk(v) for v in vertices]
+        self.vertices = PointSequence.mk(vertices)
         self.stroke = stroke
         self.marker_start = marker_start
         self.marker_mid = marker_mid
@@ -732,7 +791,7 @@ class Polyline(Parametric):
         from ochra.functions import aligned_bbox_from_points
         return aligned_bbox_from_points(self.vertices)
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         if t == 1.0:
             return self.vertices[-1]
         x = t * (self.num_vertices - 1)
@@ -740,9 +799,9 @@ class Polyline(Parametric):
         t0 = x - i
         return self.segments[i].at(t0)
 
-    def transform(self, f: AffineTransformation) -> 'Polyline':
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Polyline':
         return Polyline(
-            [f(v) for v in self.vertices],
+            f.apply_batch(self.vertices),
             stroke=self.stroke,
             marker_start=self.marker_start,
             marker_mid=self.marker_mid,
@@ -750,15 +809,18 @@ class Polyline(Parametric):
         )
 
 
-class Polygon(Parametric):
+class Polygon(Parametric, ProjectiveInvariant['Polygon']):
+    """
+    Represents a polygon in the plane.
+    """
 
     def __init__(self,
-                 vertices: Sequence[PointI],
+                 vertices: PointSequenceI,
                  stroke: Stroke = Stroke(),
                  fill: Fill = Fill(),
                  marker: Optional['Marker'] = None,
                  ):
-        self.vertices = [Point.mk(v) for v in vertices]
+        self.vertices: PointSequence = PointSequence.mk(vertices)
         self.stroke = stroke
         self.fill = fill
         self.marker = marker
@@ -769,6 +831,9 @@ class Polygon(Parametric):
 
     @property
     def edges(self):
+        """
+        Returns the edges of the polygon as a list of line segments.
+        """
         return [
             LineSegment(self.vertices[i], self.vertices[(i + 1) % self.num_vertices])
             for i in range(self.num_vertices)
@@ -786,8 +851,8 @@ class Polygon(Parametric):
         t0 = x - i
         return self.edges[i].at(t0)
 
-    def transform(self, f: AffineTransformation) -> 'Polygon':
-        return Polygon([f(v) for v in self.vertices], self.stroke, self.fill, self.marker)
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Polygon':
+        return Polygon(f.apply_batch(self.vertices), self.stroke, self.fill, self.marker)
 
     @classmethod
     def regular(cls,
@@ -808,11 +873,10 @@ class Polygon(Parametric):
         :return:
         """
         circumradius = _get_circumradius(n, circumradius, side_length, apothem)
+        angles = jnp.arange(n, dtype=jnp.float32) / n * τ
+        vertices = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1) * circumradius
         return cls(
-            [
-                Point.mk(circumradius * math.cos(τ * i / n), circumradius * math.sin(τ * i / n))
-                for i in range(n)
-            ],
+            vertices=PointSequence(vertices),
             **kwargs
         )
 
@@ -821,22 +885,19 @@ class Polygon(Parametric):
                      p: int,
                      q: int,
                      *,
-                     circumradius: float = None,
+                     circumradius: float = 1.0,
                      **kwargs
                      ):
         """
-        Draws a regular star polygon with Schläfli symbol {p/q}.
+        Draws a regular star polygon with Schläfli symbol $\\{p/q\\}$.
         :param p: The number of vertices.
         :param q: The step size.
         """
         def mk_part(j: int) -> "Polygon":
-            return cls(
-                [
-                    Point.mk(circumradius * math.cos(math.tau * i / p), circumradius * math.sin(math.tau * i / p))
-                    for i in range(j, p * q, q)
-                ],
-                **kwargs
-            )
+            angles = jnp.arange(j, p * q, q, dtype=jnp.float32) / p * τ
+            vertices = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1) * circumradius
+            return cls(PointSequence(vertices), **kwargs)
+
         num_parts = math.gcd(p, q)
         if num_parts == 1:
             return mk_part(0)
@@ -844,7 +905,7 @@ class Polygon(Parametric):
             return JoinedParametric([mk_part(i) for i in range(num_parts)])
 
 
-class Rectangle(Polygon, Parametric):
+class Rectangle(Polygon, RigidInvariant['Rectangle']):
 
     def __init__(self, bottom_left: PointI, top_right: PointI, angle: Scalar = 0.0, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         self.bottom_left = Point.mk(bottom_left)
@@ -878,13 +939,6 @@ class Rectangle(Polygon, Parametric):
     def left_center(self):
         return lerp_point(self.bottom_left, self.top_left, 0.5)
 
-    def aabb(self) -> 'AxisAlignedRectangle':
-        l = min(p.x for p in self.vertices)
-        r = max(p.x for p in self.vertices)
-        b = min(p.y for p in self.vertices)
-        u = max(p.y for p in self.vertices)
-        return AxisAlignedRectangle(bottom_left=(l, b), top_right=(r, u))
-
     def translate(self, dx: Scalar, dy: Scalar) -> 'Rectangle':
         return Rectangle(
             self.bottom_left + Vector.mk(dx, dy),
@@ -905,7 +959,7 @@ class Rectangle(Polygon, Parametric):
         )
 
 
-class AxisAlignedRectangle(Rectangle, Parametric):
+class AxisAlignedRectangle(Rectangle, TranslationalInvariant['AxisAlignedRectangle']):
 
     def __init__(self, bottom_left: PointI, top_right: PointI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
         super().__init__(bottom_left, top_right, 0.0, stroke, fill)
@@ -937,13 +991,11 @@ class AxisAlignedRectangle(Rectangle, Parametric):
             fill=self.fill
         )
 
-    def with_stroke(self, stroke: Stroke) -> 'AxisAlignedRectangle':
-        return AxisAlignedRectangle(self.bottom_left, self.top_right, stroke, self.fill)
 
-
-class Conic(Implicit):
-    """
-    Represents any conic section in the plane.
+class Conic(Implicit, Parametric, ProjectiveInvariant['Conic']):
+    r"""
+    Represents any conic section $\mathbf{x}^{\rm T} \mathbf{A} \mathbf{x} = 0$ in the plane,
+    where $\mathbf{x} = (x, y, 1)$ and $\mathbf{A} \in \mathbb{R}^{3 \times 3}$ is a symmetric matrix.
     """
     def __new__(cls, *args, **kwargs):
         if cls is Conic:
@@ -964,10 +1016,13 @@ class Conic(Implicit):
         self.fill = fill
 
     @cached_property
-    def aff_matrix(self) -> jax.Array:
+    def aff_matrix(self) -> Float[jax.Array, "2 2"]:
+        """
+        Returns the 2×2 affine part of the conic matrix.
+        """
         return self.proj_matrix[:2, :2]
 
-    def implicit_func(self, p: Point) -> jax.Array:
+    def implicit_func(self, p: Point) -> Float[jax.Array, ""]:
         pp = jnp.array([p.x, p.y, 1.0])
         return pp.T @ self.proj_matrix @ pp
 
@@ -978,12 +1033,12 @@ class Conic(Implicit):
         p = Point.mk(p)
         return Line(self.proj_matrix @ p.to_proj_point().loc)
 
-    def pole_point(self, l: LineI) -> Point:
+    def pole_point(self, l: LineI | Line) -> Point:
         """
         Returns the pole point of the given line.
         """
         l = Line.mk(l)
-        return ProjPoint(self.proj_matrix @ l.coef).to_point()
+        return ProjPoint(self.proj_matrix @ l.coef).to_point_unsafe()
 
     @classmethod
     def create(cls, coef: ConicI, stroke: Stroke = Stroke(), fill: Fill = Fill()) -> 'Conic':
@@ -1001,22 +1056,23 @@ class Conic(Implicit):
         if d3 == 0.0:  # degenerate
             if d2 < 0.0:
                 # two intersecting lines, degenerate hyperbola
-                pass
+                raise NotImplementedError
             elif d2 == 0:
                 # two parallel lines, degenerate parabola
-                pass
+                raise NotImplementedError
             else:
                 # a dot, degenerate ellipse
-                pass
+                raise NotImplementedError
         else:  # non-degenerate
             if jnp.isclose(d2, 0.0):
-                return Parabola(coef, stroke, fill)
+                return Parabola(coef, stroke)
             elif d2 < 0.0:
-                pass  # hyperbola
+                # hyperbola
+                raise NotImplementedError
             else:
                 return Ellipse(coef, stroke, fill)
 
-    def transform(self, f: ProjectiveTransformation) -> 'Conic':
+    def proj_transform(self, f: ProjectiveTransformation) -> 'Conic':
         t = f.inverse().matrix
         return Conic.create(t.T @ self.proj_matrix @ t, stroke=self.stroke, fill=self.fill)
 
@@ -1037,7 +1093,7 @@ class Conic(Implicit):
         return cls.create((A, B, C, D, E, F), **kwargs)
 
 
-class Ellipse(Conic, Parametric):
+class Ellipse(Conic, Parametric, AffineInvariant['Ellipse']):
     """
     Represents an ellipse in the plane.
     """
@@ -1125,12 +1181,12 @@ class Ellipse(Conic, Parametric):
     def directrix0(self) -> Line:
         minor_axis = Line.from_two_points(self.center, self.covertex0)
         d = (self.vertex0 - self.center) * (1 + (self.a - self.c) / self.a * self.eccentricity)
-        return minor_axis.translate(d.x, d.y)
+        return translate(minor_axis, d.x, d.y)
 
     def directrix1(self) -> Line:
         minor_axis = Line.from_two_points(self.center, self.covertex1)
         d = (self.vertex1 - self.center) * (1 + (self.a - self.c) / self.a * self.eccentricity)
-        return minor_axis.translate(d.x, d.y)
+        return translate(minor_axis, d.x, d.y)
 
     def arc_between(self, start: float, end: float):
         return Arc(self, start, end)
@@ -1143,7 +1199,7 @@ class Ellipse(Conic, Parametric):
         return float(dist(self.focus0, p) + dist(self.focus1, p)) <= float(self.a * 2)
 
     def __str__(self):
-        return f"Ellipse(f0 = {self.focus0}, f1 = {self.focus1}, a = {self.a}, angle = {self.angle})"
+        return f"Ellipse(F₀ = {self.focus0}, F₁ = {self.focus1}, a = {self.a}, θ = {self.angle})"
 
     def at(self, t: Scalar):
         θ = t * τ  # [0, 1] -> [0, τ]
@@ -1152,7 +1208,7 @@ class Ellipse(Conic, Parametric):
         y = self.center.y + self.b * jnp.sin(θ) * jnp.cos(φ) + self.a * jnp.cos(θ) * jnp.sin(φ)
         return Point(jnp.array([x, y]))
 
-    def transform(self: 'Ellipse', f: AffineTransformation) -> 'Ellipse':
+    def aff_transform(self: 'Ellipse', f: AffineTransformation) -> 'Ellipse':
         t = f.inverse().matrix
         return Ellipse(t.T @ self.proj_matrix @ t, stroke=self.stroke, fill=self.fill)
 
@@ -1162,7 +1218,7 @@ class Ellipse(Conic, Parametric):
         return cls((b * b, 0, a * a, 0, 0, -a*a*b*b), **kwargs)
 
 
-class Circle(Ellipse, Parametric):
+class Circle(Ellipse, Parametric, RigidInvariant['Circle']):
 
     def __init__(self, radius: float, center: PointI = (0, 0), stroke: Stroke = Stroke(), fill: Fill = Fill()):
         center = Point.mk(center)
@@ -1173,10 +1229,10 @@ class Circle(Ellipse, Parametric):
         self.center = center
         self.radius = radius
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         x, y = self.center.x, self.center.y
         θ = t * τ  # [0, 1] -> [0, τ]
-        return Point(x + self.radius * math.cos(θ), y + self.radius * math.sin(θ))
+        return Point.mk(x + self.radius * math.cos(θ), y + self.radius * math.sin(θ))
 
     def __contains__(self, p: PointI) -> bool:
         p = Point.mk(p)
@@ -1214,7 +1270,10 @@ class Hyperbola(Conic, Parametric):
     pass
 
 
-class Parabola(Conic, Parametric):
+class Parabola(Conic, Parametric, AffineInvariant['Parabola']):
+    """
+    Represents a parabola in the plane.
+    """
 
     def __init__(self, coef: ConicI, stroke: Stroke = Stroke()):
         super().__init__(coef, stroke=stroke)
@@ -1242,7 +1301,7 @@ class Parabola(Conic, Parametric):
         vertex_tangent = self.polar_line(self.vertex)
         nv = self._normal_vector_at_point(self.vertex)
         # TODO: better way of determining the direction of the normal vector
-        if len(intersect_line_conic(vertex_tangent.translate(nv.x, nv.y), self)) == 0:
+        if len(intersect_line_conic(translate(vertex_tangent, nv.x, nv.y), self)) == 0:
             nv = -nv
         self.angle = nv.angle
         self._aff_trans = Translation(self.vertex.loc) @ Rotation(self.angle) @ Scaling((1.0, self.scale_factor.item()))
@@ -1282,15 +1341,17 @@ class Parabola(Conic, Parametric):
         t = f.inverse().matrix
         return Parabola(t.T @ self.proj_matrix @ t, stroke=self.stroke)
 
+    def visual_bbox(self) -> 'AxisAlignedRectangle':
+        return aligned_bbox_from_points([self.at(0.1), self.at(0.5), self.at(0.9)])
+
     @classmethod
-    def from_focus_and_directrix(cls, focus: PointI, directrix: Line, **kwargs):
+    def from_focus_and_directrix(cls, focus: PointI, directrix: LineI, **kwargs):
         return Conic.from_focus_directrix_eccentricity(focus, directrix, 1.0, **kwargs)
 
 
-class QuadraticBezierCurve(Parametric):
+class QuadraticBezierCurve(Parametric, ProjectiveInvariant['QuadraticBezierCurve']):
 
-    def __init__(self, mat: jax.Array, stroke: Stroke = Stroke()):
-        assert mat.shape == (3, 2)
+    def __init__(self, mat: Float[jax.Array, "3 2"], stroke: Stroke = Stroke()):
         self.mat = mat
         self.stroke = stroke
 
@@ -1312,21 +1373,32 @@ class QuadraticBezierCurve(Parametric):
         return Point(self.mat.T @ v)
 
     def aabb(self) -> 'AxisAlignedRectangle | None':
-        # TODO: control point not correct
-        return aligned_bbox_from_points([self.p0, self.p1, self.p2])
+        potential_extrema = [self.p0, self.p2]
+        denom_x = self.p0.x - 2 * self.p1.x + self.p2.x
+        denom_y = self.p0.y - 2 * self.p1.y + self.p2.y
+        if denom_x != 0.0:
+            t = (self.p0.x - self.p1.x) / denom_x
+            if 0 <= t <= 1:
+                potential_extrema.append(self.at(t))
+        if denom_y != 0.0:
+            t = (self.p0.y - self.p1.y) / denom_y
+            if 0 <= t <= 1:
+                potential_extrema.append(self.at(t))
+        return aligned_bbox_from_points(potential_extrema)
 
-    def transform(self: 'QuadraticBezierCurve', f: AffineTransformation) -> 'QuadraticBezierCurve':
-        return QuadraticBezierCurve(f.apply_batch(self.mat), stroke=self.stroke)
+
+    def proj_transform(self: 'QuadraticBezierCurve', f: ProjectiveTransformation) -> 'QuadraticBezierCurve':
+        return QuadraticBezierCurve(f.apply_batch(PointSequence(self.mat)).points, stroke=self.stroke)
 
     @classmethod
     def from_points(cls, p0: PointI, p1: PointI, p2: PointI, **kwargs):
         return cls(jnp.stack([Point.mk(p).loc for p in [p0, p1, p2]]), **kwargs)
 
 
-class QuadraticBezierPath(Parametric):
+class QuadraticBezierPath(Parametric, ProjectiveInvariant['QuadraticBezierPath']):
     def __init__(
             self,
-            mat: jax.Array,
+            mat: Float[jax.Array, "2*p+1 2"],
             stroke: Stroke = Stroke(),
             markers: 'MarkerConfig | None' = None,
     ):
@@ -1356,7 +1428,7 @@ class QuadraticBezierPath(Parametric):
         # TODO: not correct
         pass
 
-    def at(self, t: float):
+    def at(self, t: Scalar):
         if t == 1.0:
             return Point(self.mat[-1, :])
         else:
@@ -1373,8 +1445,8 @@ class QuadraticBezierPath(Parametric):
         arr[1::2] = [Point.mk(p) for p in control_points]
         return cls(jnp.stack([p.loc for p in arr]), **kwargs)
 
-    def transform(self: 'QuadraticBezierPath', f: ProjectiveTransformation) -> 'QuadraticBezierPath':
-        return QuadraticBezierPath(f.apply_batch(self.mat), stroke=self.stroke, markers=self.markers)
+    def proj_transform(self: 'QuadraticBezierPath', f: ProjectiveTransformation) -> 'QuadraticBezierPath':
+        return QuadraticBezierPath(f.apply_batch(PointSequence(self.mat)).points, stroke=self.stroke, markers=self.markers)
 
 
 class CubicBezierCurve(Parametric):
@@ -1406,7 +1478,7 @@ class EmbeddedCanvas(Group):
         self.canvas = canvas
         self.left_bottom = Point.mk(left_bottom)
         super().__init__(elements=[
-            canvas.translate(self.left_bottom.x, self.left_bottom.y)
+            translate(canvas, self.left_bottom.x, self.left_bottom.y)
         ])
 
 
@@ -1424,6 +1496,62 @@ def _get_circumradius(
         return apothem / math.cos(math.tau / (2 * n))
     else:
         raise ValueError("One of circumradius, side_length, or apothem must be provided.")
+
+@overload
+def transform(e: Canvas, f: ProjectiveTransformation) -> Canvas: ...
+@overload
+def transform(e: Group, f: ProjectiveTransformation) -> Group: ...
+@overload
+def transform[TrsE](e: TranslationalInvariant[TrsE], f: Translation) -> TrsE: ...
+@overload
+def transform[RigE](e: RigidInvariant[RigE], f: RigidTransformation) -> RigE: ...
+@overload
+def transform[AffE](e: AffineInvariant[AffE], f: AffineTransformation) -> AffE: ...
+@overload
+def transform[PrjE](e: ProjectiveInvariant[PrjE], f: ProjectiveTransformation) -> PrjE: ...
+@overload
+def transform(e: Parametric, f: ProjectiveTransformation) -> Parametric: ...
+@overload
+def transform(e: Implicit, f: ProjectiveTransformation) -> Implicit: ...
+@overload
+def transform(e: Element, f: AffineTransformation) -> Element: ...
+
+def transform(e, f):
+    if isinstance(e, Canvas):
+        return Canvas([transform(x, f) for x in e.elements], e.viewport)
+    if isinstance(e, Group):
+        return Group([transform(x, f) for x in e.elements])
+    elif isinstance(e, TranslationalInvariant) and isinstance(f, Translation):
+        return e.trans_transform(f)
+    elif isinstance(e, RigidInvariant) and isinstance(f, RigidTransformation):
+        return e.rigid_transform(f)
+    elif isinstance(e, AffineInvariant) and isinstance(f, AffineTransformation):
+        return e.aff_transform(f)
+    elif isinstance(e, ProjectiveInvariant) and isinstance(f, ProjectiveTransformation):
+        return e.proj_transform(f)
+    elif isinstance(e, Element) and isinstance(f, AffineTransformation):
+        return AnyAffinelyTransformed(e, f)  # ultimate fallback to SVG transform: can't be transformed within Ochra
+    else:
+        raise ValueError(f"Cannot transform {type(e)} by {type(f)}.")
+
+
+@overload
+def translate(e: Canvas, dx: Scalar, dy: Scalar) -> Canvas: ...
+@overload
+def translate(e: Group, dx: Scalar, dy: Scalar) -> Group: ...
+@overload
+def translate[TrsE](e: TranslationalInvariant[TrsE], dx: Scalar, dy: Scalar) -> TrsE: ...
+@overload
+def translate[RigE](e: RigidInvariant[RigE], dx: Scalar, dy: Scalar) -> RigE: ...
+@overload
+def translate[AffE](e: AffineInvariant[AffE], dx: Scalar, dy: Scalar) -> AffE: ...
+@overload
+def translate[PrjE](e: ProjectiveInvariant[PrjE], dx: Scalar, dy: Scalar) -> PrjE: ...
+@overload
+def translate(e: Element, dx: Scalar, dy: Scalar) -> Element: ...
+
+def translate(e, dx: Scalar, dy: Scalar):
+    return transform(e, Translation((dx, dy)))
 
 
 def intersect_interval_interval(i0: tuple[Scalar, Scalar], i1: tuple[Scalar, Scalar]) -> tuple[Scalar, Scalar] | Scalar | None:
@@ -1477,8 +1605,7 @@ def intersect_segment_segment(s0: LineSegment, s1: LineSegment) -> Point | LineS
             return LineSegment(Point.mk(a[0], b[0]), Point.mk(a[1], b[1]))
         elif isinstance(a, float) and isinstance(b, float):
             return Point.mk(a, b)
-    else:
-        return None
+    return None
 
 
 def intersect_line_segment_param(l: Line, s: LineSegment) -> list[Scalar]:
@@ -1489,7 +1616,8 @@ def intersect_line_segment_param(l: Line, s: LineSegment) -> list[Scalar]:
 
 def intersect_line_segment(l: Line, s: LineSegment) -> Point | LineSegment | None:
     """
-    Intersect a line and a line segment.
+    Intersects a line $l: ax + by + c = 0$ and a line segment $s: P_0P_1$.
+    :return: The intersection point, the intersection line segment, or `None` if the line and segment do not intersect.
     """
     x = intersect_line_line(l, s.extend_as_line())
     if isinstance(x, Point):
@@ -1500,6 +1628,7 @@ def intersect_line_segment(l: Line, s: LineSegment) -> Point | LineSegment | Non
             return LineSegment(s.at(ts[0]), s.at(ts[1]))
     elif isinstance(x, Line):
         return s  # line overlaps with segment
+    return None
 
 
 def intersect_line_conic(l: Line, c: Conic) -> list[Point]:
@@ -1524,7 +1653,7 @@ def intersect_line_aabb(l: Line, aabb: AxisAlignedRectangle) -> Point | list[Poi
     if num_ge_0 == 0 or num_ge_0 == 4:
         return None  # no intersection
     else:
-        ps = set([intersect_line_segment(l, s) for s in aabb.edges])
+        ps = [intersect_line_segment(l, s) for s in aabb.edges]  # TODO: overlapping points
         return [p for p in ps if p is not None]
 
 

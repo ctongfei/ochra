@@ -17,8 +17,8 @@ series = [
 nord = Palette.nord
 
 markers = [
-    ox.Marker.plus_mark(stroke=oxs.Stroke(nord.aurora[0])),
-    ox.Marker.x_mark(stroke=oxs.Stroke(nord.aurora[1])),
+    ox.Marker.plus(stroke=oxs.Stroke(nord.aurora[0])),
+    ox.Marker.cross(stroke=oxs.Stroke(nord.aurora[1])),
     ox.Marker.polygon(3, stroke=oxs.Stroke(nord.aurora[2])),
 ]
 

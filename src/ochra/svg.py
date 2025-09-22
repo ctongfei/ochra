@@ -2,9 +2,8 @@ import xml.etree.ElementTree as ET
 from typing import Dict, ContextManager
 
 from ochra.functions import f2s, rad_to_deg
-from ochra.geometry import *  # noqa: F403
 from ochra.core import *  # noqa: F403
-from ochra.style import *
+from ochra.style import *  # noqa: F403
 from ochra.mark import Marker, MarkerConfig, Mark
 from ochra.text import Text
 
@@ -68,12 +67,28 @@ def font_to_css(font: Font) -> Dict[str, str]:
     return {**family, **size, **weight, **style}
 
 
-def transformation_to_css(t: AffineTransformation) -> dict[str, str]:
+def affine_transformation_to_css(t: AffineTransformation) -> dict[str, str]:
+    """
+    Converts an affine transformation to a CSS transform string.
+    """
     m = t.matrix / t.matrix[2, 2]
-    [a, c, e, b, d, f] = m[:2, :].flatten()
-    s = ' '.join(f2s(x.item()) for x in [a, b, c, d, e, f])
+    [a, c, tx, b, d, ty] = m[:2, :].flatten().tolist()
+    s = ' '.join(f2s(x) for x in [a, b, c, d, tx, ty])
     return {
         "transform": f"matrix({s})"
+    }
+
+def projective_transformation_to_css(t: ProjectiveTransformation) -> dict[str, str]:
+    m = t.matrix / t.matrix[2, 2]
+    [a1, a2, a4, b1, b2, b4, d1, d2, d4] = m.flatten().tolist()  # z-axis non-existent
+    s = ' '.join(f2s(x) for x in [
+        a1, b1, 0, d1,
+        a2, b2, 0, d2,
+        0, 0, 1, 0,
+        a4, b4, 0, d4
+    ])
+    return {
+        "transform": f"matrix3d({s})"
     }
 
 
@@ -87,7 +102,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
     if isinstance(e, AnyAffinelyTransformed):
         g = ET.Element(
             "g",
-            **transformation_to_css(e.transformation),
+            **affine_transformation_to_css(e.transformation),
         )
         g.append(element_to_svg(c, e.element))
         return g
@@ -245,7 +260,7 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
 
 def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float = 0.0) -> ET.Element:
     hp, vp = horizontal_padding, vertical_padding
-    all = [
+    all_elements = [
         element_to_svg(c, e.scale(1, -1))  # to SVG coordinate system
         for e in c.elements
     ]
@@ -268,7 +283,7 @@ def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float =
     defs.extend(all_markers)
     defs.extend(all_symbols)
     root.append(defs)
-    root.extend(all)
+    root.extend(all_elements)
     return root
 
 

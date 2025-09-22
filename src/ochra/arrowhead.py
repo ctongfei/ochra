@@ -1,8 +1,9 @@
 import math
 from dataclasses import replace
 
-from ochra.geometry import Point
-from ochra.core import Polygon, Polyline, AxisAlignedRectangle, Marker
+from ochra.geometry import Point, τ
+from ochra.core import Polygon, Polyline, AxisAlignedRectangle
+from ochra.mark import Marker
 from ochra.style import Stroke, Fill, LineJoin
 
 
@@ -21,9 +22,9 @@ class Arrowhead:
 def _arrow_triangle_base(size: float, angle: float, **kwargs):
     return Polygon(
         [
-            Point(size, 0),
-            Point.polar(size, math.tau / 2 - angle),
-            Point.polar(size, math.tau / 2 + angle)
+            Point.mk(size, 0),
+            Point.polar(size, τ / 2 - angle),
+            Point.polar(size, τ / 2 + angle)
         ],
         **kwargs
     ).translate(-size, 0)  # center at arrow tip
@@ -56,7 +57,7 @@ def arrow_stealth(size: float = 5.0, angle: float = math.degrees(30), **kwargs):
             [
                 triangle.vertices[0],
                 triangle.vertices[1],
-                Point(-size, 0),
+                Point.mk(-size, 0),
                 triangle.vertices[2]
             ],
             stroke=stroke,

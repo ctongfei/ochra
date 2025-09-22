@@ -4,7 +4,7 @@ from enum import Enum
 from functools import partial
 from typing import Collection, Generic, Tuple, Optional
 
-from ochra.core import *
+from ochra.core import Element, Group, AxisAlignedRectangle, LineSegment
 from ochra.mark import Marker
 from ochra.mark import Mark
 from ochra.geometry import Point, Vector, Translation, Scaling
@@ -42,8 +42,8 @@ class Chart(Generic[X, Y]):
                  tick_stroke: Optional[Stroke] = None,
                  font: Font = Font(),
                  text_padding: float = 2,
-                 major_tick_length: float = 3,
-                 minor_tick_length: float = 2,
+                 major_tick_length: float = 5,
+                 minor_tick_length: float = 3,
                  palette: Optional[Palette] = None
                  ):
         self.x_size, self.y_size = size
@@ -81,7 +81,9 @@ class Chart(Generic[X, Y]):
         x_axis = self._draw_axis(self.x_axis, AxisOrientation.X_PRIMARY)
         y_axis = self._draw_axis(self.y_axis, AxisOrientation.Y_PRIMARY)
         if Y2 is not None:
-            y2_axis = self._draw_axis(Y2, AxisOrientation.Y_SECONDARY)
+            # TODO: secondary y axis
+            #y2_axis = self._draw_axis(Y2, AxisOrientation.Y_SECONDARY)
+            pass
         legend = self._draw_legend()
         legend_bbox = legend.aabb()
 

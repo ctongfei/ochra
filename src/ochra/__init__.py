@@ -8,6 +8,8 @@ from .geometry import (
     Scaling,
     ShearX,
     ShearY,
+    Elation,
+    Reflection,
 )
 from .core import (
     Element,
@@ -40,10 +42,11 @@ from .mark import Mark, Marker, MarkerOrientation, MarkerUnits
 from .style import Color, Stroke, Fill, Font
 from .text import Text
 from .table import Table
-import ochra.svg
+from .util import Global
 
 
 __all__ = [
+    "Global",
     "Scalar",
     "Vector",
     "Point",
@@ -53,6 +56,8 @@ __all__ = [
     "Scaling",
     "ShearX",
     "ShearY",
+    "Elation",
+    "Reflection",
     "Element",
     "Group",
     "Annotation",

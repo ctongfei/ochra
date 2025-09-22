@@ -3,11 +3,22 @@ class Global:
     Global settings for drawing.
     """
     approx_eps: float = 2 ** -16
+    """The epsilon for approximating floating point numbers as equal."""
+
     boundary_eps: float = 2 ** -16
+    """The epsilon for avoiding boundary issues."""
+
     first_order_step_size: float = 2.0
+    """The step size for tracing polylines."""
+
     second_order_step_size: float = 8.0
+    """The step size for tracing quadratic Bézier paths."""
+
     num_first_order_steps: int = 512
+    """The number of steps for tracing polylines."""
+
     num_second_order_steps: int = 64
+    """The number of steps for tracing quadratic Bézier paths."""
 
     @classmethod
     def set_approx_eps(cls, eps: float):
@@ -50,3 +61,11 @@ class classproperty:
     def getter(self, method):
         self.fget = method
         return self
+
+
+def expected(func):
+    """
+    Decorator that marks a function as expected to be implemented in the future.
+    """
+    func.__expected__ = True
+    return func
