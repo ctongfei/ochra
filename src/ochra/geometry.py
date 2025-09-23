@@ -3,16 +3,14 @@ Defines the geometric primitives used in Ochra.
 """
 
 import math
-from abc import ABC
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, overload, override
+from typing import TYPE_CHECKING, overload
 
 import jax
 import jax.numpy as jnp
 import jax_dataclasses as jdc
 from jaxtyping import Float
 
-from ochra.functions import f2s
 from ochra.util import Global, classproperty
 if TYPE_CHECKING:
     from ochra.core import Line
@@ -459,6 +457,9 @@ class RigidTransformation(AffineTransformation):
         elif isinstance(other, AffineTransformation):
             return AffineTransformation(self.matrix @ other.matrix)
         return ProjectiveTransformation(self.matrix @ other.matrix)
+
+    def decompose(self) -> tuple['Translation', 'Rotation']:
+        return Translation(self.matrix[:2, 2]), Rotation(jnp.arctan2(self.matrix[1, 0], self.matrix[0, 0]))
 
 
 

@@ -31,6 +31,9 @@ dev = [
     "pymdown-extensions>=10.16.1",
 ]
 
+[tool.ruff]
+line-length = 120
+
 [tool.ruff.lint]
 ignore = [
     "E731",

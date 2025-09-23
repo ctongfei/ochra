@@ -1,10 +1,11 @@
 import ochra as ox
+import ochra.palettes as oxp
 from ochra.svg import save_svg
 from ochra.functions import deg_to_rad
 
 cross = ox.Marker.cross(size=4)
 plus = ox.Marker.plus(size=4)
-blue = ox.Stroke(width=6, color=ox.palettes.ios.blue)
+blue = ox.Stroke(width=6, color=oxp.ios.blue)
 
 f0 = (0, 0)
 f1 = (-50, 70)

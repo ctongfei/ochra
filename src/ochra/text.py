@@ -1,11 +1,11 @@
 from functools import cached_property
 
-from ochra.geometry import Point, PointI, AffineTransformation, Translation, Rotation
-from ochra.core import Element, AnyAffinelyTransformed, Rectangle, AxisAlignedRectangle
+from ochra.geometry import Point, PointI, AffineTransformation, Translation, Rotation, ProjectiveTransformation
+from ochra.core import CustomTransformMixin, AnyAffinelyTransformed, Rectangle, AxisAlignedRectangle
 from ochra.style import Font, TextExtents, _text_extents
 
 
-class Text(Element):
+class Text(CustomTransformMixin):
 
     def __init__(self, text: str, bottom_left: PointI, angle: float = 0.0,
                  font: Font = Font()):
@@ -20,7 +20,9 @@ class Text(Element):
         rect = AxisAlignedRectangle(
             Point.origin,
             Point.mk((self.extents.x_advance, -self.extents.y_bearing))
-        ).rotate(self.angle).translate(self.bottom_left.x, self.bottom_left.y)
+        )
+        rect = rect.rotate(self.angle)
+        rect = rect.translate(self.bottom_left.x, self.bottom_left.y)
         return rect
 
     @cached_property
@@ -90,11 +92,9 @@ class Text(Element):
         bbox = cls(text, Point.origin, angle, font).rotated_visual_bbox
         return cls(text, left_center - bbox.left_center.to_vector(), angle, font)
 
-    def translate(self, dx: float, dy: float) -> 'Text':
-        tr = Translation((dx, dy))
-        return Text(self.text, tr(self.bottom_left), self.angle, self.font)
-
-    def transform(self, f: AffineTransformation) -> 'Element':
+    def transform(self, f: ProjectiveTransformation) -> 'Element':
+        if not isinstance(f, AffineTransformation):
+            raise NotImplementedError("Text does not support projective transformations.")
         t, r, _, s = f.decompose()
         if s.scale.x == 1.0 and s.scale.y == -1.0:  # TODO
             return Text(self.text, t(self.bottom_left),

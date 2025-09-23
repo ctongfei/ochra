@@ -10,12 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Self,
     cast,
-    NoReturn,
-    Generic,
-    TypeVar,
     overload,
-    Any,
-    Protocol,
 )
 
 import numpy as np  # TODO: get rid of
@@ -23,7 +18,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Float
 
-from ochra.util import Global, expected
+from ochra.util import Global
 from ochra.geometry import (
     τ,
     Scalar,
@@ -61,21 +56,6 @@ if TYPE_CHECKING:
     from ochra.mark import Marker, MarkerConfig
 
 
-class TranslationalInvariant[TrsE]:
-    def trans_transform(self, f: Translation) -> TrsE: ...
-
-
-class RigidInvariant[RigE]:
-    def rigid_transform(self, f: RigidTransformation) -> RigE: ...
-
-
-class AffineInvariant[AffE]:
-    def aff_transform(self, f: AffineTransformation) -> AffE: ...
-
-
-class ProjectiveInvariant[ProjE]:
-    def proj_transform(self, f: ProjectiveTransformation) -> ProjE: ...
-
 class Element(ABC):
     """
     Base class for all drawable elements.
@@ -110,8 +90,143 @@ class Element(ABC):
         assert aabb is not None
         return aabb
 
+    def transform(self, f: ProjectiveTransformation) -> 'Element':
+        raise NotImplementedError(f"transform() is not implemented for type {type(self)}.")
 
-class AnyAffinelyTransformed(Element, AffineInvariant['AnyAffinelyTransformed']):
+    def translate(self, dx: Scalar, dy: Scalar) -> 'Element':
+        return self.transform(Translation((dx, dy)))
+
+
+
+class TranslationalInvariant[E: Element](ABC):
+    """
+    Represents a type that is type-invariant under translation. `E` is an F-bounded type.
+    """
+    @abstractmethod
+    def trans_transform(self, f: Translation) -> E:
+        raise NotImplementedError(f"trans_transform() is not implemented for type {type(self)}.")
+
+
+class RigidInvariant[E: Element](ABC):
+    """
+    Represents a type that is type-invariant under rigid transformations (translation and rotation). `E` is an F-bounded type.
+    """
+    @abstractmethod
+    def rigid_transform(self, f: RigidTransformation) -> E:
+        raise NotImplementedError(f"rigid_transform() is not implemented for type {type(self)}.")
+
+
+class AffineInvariant[E: Element](ABC):
+    """
+    Represents a type that is type-invariant under affine transformations. `E` is an F-bounded type.
+    """
+    @abstractmethod
+    def aff_transform(self, f: AffineTransformation) -> E:
+        raise NotImplementedError(f"aff_transform() is not implemented for type {type(self)}.")
+
+
+class ProjectiveInvariant[E: Element](ABC):
+    """
+    Represents a type that is type-invariant under projective transformations. `E` is an F-bounded type.
+    """
+    @abstractmethod
+    def proj_transform(self, f: ProjectiveTransformation) -> E:
+        raise NotImplementedError(f"proj_transform() is not implemented for type {type(self)}.")
+
+
+class InferredTransformMixin(Element):
+    @overload
+    def transform[E: Element](self: TranslationalInvariant[E], f: Translation) -> E: ...
+    @overload
+    def transform[E: Element](self: RigidInvariant[E], f: RigidTransformation) -> E: ...
+    @overload
+    def transform[E: Element](self: AffineInvariant[E], f: AffineTransformation) -> E: ...
+    @overload
+    def transform[E: Element](self: ProjectiveInvariant[E], f: ProjectiveTransformation) -> E: ...
+    @overload
+    def transform(self: 'Implicit', f: ProjectiveTransformation) -> 'Implicit': ...
+    @overload
+    def transform(self: 'Parametric', f: ProjectiveTransformation) -> 'Parametric': ...
+    @overload
+    def transform(self: Element, f: AffineTransformation) -> Element: ...
+
+    def transform(self, f):
+        if isinstance(self, TranslationalInvariant) and isinstance(f, Translation):
+            return self.trans_transform(f)
+        elif isinstance(self, RigidInvariant) and isinstance(f, RigidTransformation):
+            return self.rigid_transform(f)
+        elif isinstance(self, AffineInvariant) and isinstance(f, AffineTransformation):
+            return self.aff_transform(f)
+        elif isinstance(self, ProjectiveInvariant) and isinstance(f, ProjectiveTransformation):
+            return self.proj_transform(f)
+        elif isinstance(self, Element) and isinstance(f, AffineTransformation):
+            return AnyAffinelyTransformed(
+                self, f
+            )  # ultimate fallback to SVG transform: can't be transformed within Ochra
+        else:
+            raise ValueError(f"Cannot transform {type(self)} by {type(f)}.")
+
+    @overload
+    def translate[E: Element](self: TranslationalInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
+    @overload
+    def translate[E: Element](self: RigidInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
+    @overload
+    def translate[E: Element](self: AffineInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
+    @overload
+    def translate[E: Element](self: ProjectiveInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
+    @overload
+    def translate(self: Element, dx: Scalar, dy: Scalar) -> Element: ...
+
+    def translate(self, dx: Scalar, dy: Scalar):
+        return self.transform(Translation((dx, dy)))
+
+    @overload
+    def rotate[E: Element](self: RigidInvariant[E], θ: Scalar, anchor: PointI = Point.origin) -> E: ...
+    @overload
+    def rotate[E: Element](self: AffineInvariant[E], θ: Scalar, anchor: PointI = Point.origin) -> E: ...
+    @overload
+    def rotate[E: Element](self: ProjectiveInvariant[E], θ: Scalar, anchor: PointI = Point.origin) -> E: ...
+    @overload
+    def rotate(self: Element, θ: Scalar, anchor: PointI = Point.origin) -> Element: ...
+
+    def rotate(self, θ: Scalar, anchor: PointI = Point.origin):
+        if anchor == Point.origin:
+            return self.transform(Rotation(θ))
+        else:
+            return self.transform(Rotation.centered(θ, anchor))
+
+    @overload
+    def scale[E: Element](self: AffineInvariant[E], sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> E: ...
+    @overload
+    def scale[E: Element](self: ProjectiveInvariant[E], sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> E: ...
+    @overload
+    def scale(self: Element, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> Element: ...
+
+    def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin):
+        if anchor == Point.origin:
+            return self.transform(Scaling((sx, sy)))
+        else:
+            return self.transform(Scaling.centered((sx, sy), anchor))
+
+
+class CustomTransformMixin(Element):
+    def translate(self, dx: Scalar, dy: Scalar) -> 'Element':
+        return self.transform(Translation((dx, dy)))
+
+    def rotate(self, θ: Scalar, anchor: PointI = Point.origin) -> 'Element':
+        if anchor == Point.origin:
+            return self.transform(Rotation(θ))
+        else:
+            return self.transform(Rotation.centered(θ, anchor))
+
+    def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> 'Element':
+        if anchor == Point.origin:
+            return self.transform(Scaling((sx, sy)))
+        else:
+            return self.transform(Scaling.centered((sx, sy), anchor))
+
+
+class AnyAffinelyTransformed(InferredTransformMixin, AffineInvariant['AnyAffinelyTransformed']):
     """
     Fallback class for affinely transformed elements.
     At rendering time, objects of this class will be rendered by the SVG transform attribute.
@@ -128,10 +243,10 @@ class AnyAffinelyTransformed(Element, AffineInvariant['AnyAffinelyTransformed'])
         old_bbox = self.element.aabb()
         if old_bbox is None:
             return None
-        return transform(old_bbox, self.transformation).aabb()
+        return old_bbox.transform(self.transformation).aabb()
 
 
-class Group(Element):
+class Group(CustomTransformMixin):
     """
     Represents a group of elements.
     """
@@ -157,8 +272,11 @@ class Group(Element):
             else:
                 yield e
 
+    def transform(self, f: ProjectiveTransformation) -> 'Group':
+        return Group([e.transform(f) for e in self.elements])
 
-class Annotation(Element, ProjectiveInvariant['Annotation']):
+
+class Annotation(InferredTransformMixin, ProjectiveInvariant['Annotation']):
     """
     Annotations are special elements that do not scale or rotate by transformations.
     """
@@ -183,7 +301,7 @@ class Annotation(Element, ProjectiveInvariant['Annotation']):
         return Annotation(new_anchor, self.materialize_at)
 
 
-class Parametric(Element):
+class Parametric(CustomTransformMixin):
     r"""
     Represents any shape $[0, 1] \to \mathbb{R}^2$ whose points can be parameterized by a single parameter $t \in [0, 1]$.
     """
@@ -286,7 +404,7 @@ class Parametric(Element):
         else:
             return Group(qbps)
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Parametric':
+    def transform(self, f: ProjectiveTransformation) -> 'Parametric':
         return ParametricFromFunction(lambda t: cast(Point, f(self.at(t))), stroke=self.stroke)
 
     def slice(self, t0: Scalar, t1: Scalar) -> 'Parametric':
@@ -374,8 +492,8 @@ class JoinedParametric(Group, Parametric):
             t0 = t * n - i
             return self.shapes[i].at(t0)
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'JoinedParametric':
-        return JoinedParametric([transform(s, f) for s in self.shapes])
+    def transform(self, f: ProjectiveTransformation) -> 'JoinedParametric':
+        return JoinedParametric([s.transform(f) for s in self.shapes], stroke=self.stroke)
 
 
 class FunctionGraph(Parametric):
@@ -400,7 +518,7 @@ class FunctionGraph(Parametric):
         return Point.mk(x, y)
 
 
-class Implicit(Element):
+class Implicit(CustomTransformMixin):
     r"""
     Represents an implicit curve defined by an implicit function $f(x, y) = 0$.
     The points on the curve are those that satisfy the equation.
@@ -496,7 +614,7 @@ class Implicit(Element):
         qbp = QuadraticBezierPath.from_points(points, control_points, **kwargs)
         return qbp
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Implicit':
+    def transform(self, f: ProjectiveTransformation) -> 'Implicit':
         return ImplicitCurve(lambda p: self.implicit_func(f.inverse().unsafe_apply(p)))
 
 
@@ -509,7 +627,7 @@ class ImplicitCurve(Implicit):
         return self._func(p)
 
 
-class Line(Parametric, Implicit, ProjectiveInvariant['Line']):
+class Line(InferredTransformMixin, Parametric, Implicit, ProjectiveInvariant['Line']):
     r"""
     Represents a mathematical line $ax + by + c = 0$ in the plane (infinite in both directions).
     Not to be confused with a line segment (LineSegment).
@@ -679,7 +797,7 @@ class Ray(Parametric):
         return aligned_bbox_from_points([self.at(0.0), self.at(0.75)])
 
 
-class LineSegment(Parametric, ProjectiveInvariant['LineSegment']):
+class LineSegment(InferredTransformMixin, Parametric, ProjectiveInvariant['LineSegment']):
 
     def __init__(self,
                  p0: PointI,
@@ -758,7 +876,7 @@ class LineSegment(Parametric, ProjectiveInvariant['LineSegment']):
         )
 
 
-class Polyline(Parametric, ProjectiveInvariant['Polyline']):
+class Polyline(InferredTransformMixin, Parametric, ProjectiveInvariant['Polyline']):
 
     def __init__(self,
                  vertices: PointSequenceI,
@@ -809,7 +927,7 @@ class Polyline(Parametric, ProjectiveInvariant['Polyline']):
         )
 
 
-class Polygon(Parametric, ProjectiveInvariant['Polygon']):
+class Polygon(InferredTransformMixin, Parametric, ProjectiveInvariant['Polygon']):
     """
     Represents a polygon in the plane.
     """
@@ -939,21 +1057,12 @@ class Rectangle(Polygon, RigidInvariant['Rectangle']):
     def left_center(self):
         return lerp_point(self.bottom_left, self.top_left, 0.5)
 
-    def translate(self, dx: Scalar, dy: Scalar) -> 'Rectangle':
+    def rigid_transform(self, f: RigidTransformation) -> 'Rectangle':
+        trs, rot = f.decompose()
         return Rectangle(
-            self.bottom_left + Vector.mk(dx, dy),
-            self.top_right + Vector.mk(dx, dy),
-            self.angle,
-            stroke=self.stroke,
-            fill=self.fill
-        )
-
-    def rotate(self, angle: Scalar, anchor: PointI = Point.origin) -> 'Rectangle':
-        rot = Rotation.centered(angle, anchor)
-        return Rectangle(
-            rot(self.bottom_left),
-            rot(self.top_right),
-            self.angle + angle,
+            trs(self.bottom_left),
+            trs(self.top_right),
+            rot.angle,
             stroke=self.stroke,
             fill=self.fill
         )
@@ -975,7 +1084,8 @@ class AxisAlignedRectangle(Rectangle, TranslationalInvariant['AxisAlignedRectang
             fill=self.fill
         )
 
-    def translate(self, dx: Scalar, dy: Scalar) -> 'AxisAlignedRectangle':
+    def trans_transform(self, f: Translation) -> 'AxisAlignedRectangle':
+        dx, dy = f.vec.x, f.vec.y
         return AxisAlignedRectangle(
             self.bottom_left.translate(dx, dy),
             self.top_right.translate(dx, dy),
@@ -983,16 +1093,8 @@ class AxisAlignedRectangle(Rectangle, TranslationalInvariant['AxisAlignedRectang
             fill=self.fill
         )
 
-    def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> 'AxisAlignedRectangle':
-        return AxisAlignedRectangle(
-            self.bottom_left.scale(sx, sy),  # TODO: wrong
-            self.top_right.scale(sx, sy),
-            stroke=self.stroke,
-            fill=self.fill
-        )
 
-
-class Conic(Implicit, Parametric, ProjectiveInvariant['Conic']):
+class Conic(InferredTransformMixin, Implicit, Parametric, ProjectiveInvariant['Conic']):
     r"""
     Represents any conic section $\mathbf{x}^{\rm T} \mathbf{A} \mathbf{x} = 0$ in the plane,
     where $\mathbf{x} = (x, y, 1)$ and $\mathbf{A} \in \mathbb{R}^{3 \times 3}$ is a symmetric matrix.
@@ -1181,12 +1283,12 @@ class Ellipse(Conic, Parametric, AffineInvariant['Ellipse']):
     def directrix0(self) -> Line:
         minor_axis = Line.from_two_points(self.center, self.covertex0)
         d = (self.vertex0 - self.center) * (1 + (self.a - self.c) / self.a * self.eccentricity)
-        return translate(minor_axis, d.x, d.y)
+        return minor_axis.translate(d.x, d.y)
 
     def directrix1(self) -> Line:
         minor_axis = Line.from_two_points(self.center, self.covertex1)
         d = (self.vertex1 - self.center) * (1 + (self.a - self.c) / self.a * self.eccentricity)
-        return translate(minor_axis, d.x, d.y)
+        return minor_axis.translate(d.x, d.y)
 
     def arc_between(self, start: float, end: float):
         return Arc(self, start, end)
@@ -1244,9 +1346,8 @@ class Circle(Ellipse, Parametric, RigidInvariant['Circle']):
             self.center + Vector.mk((self.radius, self.radius))
         )
 
-    def transform(self, f: AffineTransformation) -> 'Ellipse':
-        # TODO: wrong! transforms into an ellipse
-        return Circle(self.radius, center=f(self.center), stroke=self.stroke, fill=self.fill)
+    def rigid_transform(self: 'Circle', f: RigidTransformation) -> 'Circle':
+        return Circle(self.radius, f(self.center), stroke=self.stroke, fill=self.fill)
 
     @classmethod
     def from_center_and_radius(cls, center: PointI, radius: float, **kwargs):
@@ -1301,7 +1402,7 @@ class Parabola(Conic, Parametric, AffineInvariant['Parabola']):
         vertex_tangent = self.polar_line(self.vertex)
         nv = self._normal_vector_at_point(self.vertex)
         # TODO: better way of determining the direction of the normal vector
-        if len(intersect_line_conic(translate(vertex_tangent, nv.x, nv.y), self)) == 0:
+        if len(intersect_line_conic(vertex_tangent.translate(nv.x, nv.y), self)) == 0:
             nv = -nv
         self.angle = nv.angle
         self._aff_trans = Translation(self.vertex.loc) @ Rotation(self.angle) @ Scaling((1.0, self.scale_factor.item()))
@@ -1337,7 +1438,7 @@ class Parabola(Conic, Parametric, AffineInvariant['Parabola']):
         pp = self._aff_trans.matrix @ p
         return Point(pp[:2] / pp[2])
 
-    def transform(self: 'Parabola', f: AffineTransformation) -> 'Parabola':
+    def aff_transform(self: 'Parabola', f: AffineTransformation) -> 'Parabola':
         t = f.inverse().matrix
         return Parabola(t.T @ self.proj_matrix @ t, stroke=self.stroke)
 
@@ -1349,7 +1450,7 @@ class Parabola(Conic, Parametric, AffineInvariant['Parabola']):
         return Conic.from_focus_directrix_eccentricity(focus, directrix, 1.0, **kwargs)
 
 
-class QuadraticBezierCurve(Parametric, ProjectiveInvariant['QuadraticBezierCurve']):
+class QuadraticBezierCurve(InferredTransformMixin, Parametric, ProjectiveInvariant['QuadraticBezierCurve']):
 
     def __init__(self, mat: Float[jax.Array, "3 2"], stroke: Stroke = Stroke()):
         self.mat = mat
@@ -1478,80 +1579,24 @@ class EmbeddedCanvas(Group):
         self.canvas = canvas
         self.left_bottom = Point.mk(left_bottom)
         super().__init__(elements=[
-            translate(canvas, self.left_bottom.x, self.left_bottom.y)
+            canvas.translate(self.left_bottom.x, self.left_bottom.y)
         ])
 
 
 def _get_circumradius(
         n: int,
-        circumradius: Optional[float],
-        side_length: Optional[float],
-        apothem: Optional[float]
+        circumradius: float | None,
+        side_length: float | None,
+        apothem: float | None,
 ):
     if circumradius is not None:
         return circumradius
     elif side_length is not None:
-        return side_length / (2 * math.sin(math.tau / (2 * n)))
+        return side_length / (2 * math.sin(τ / (2 * n)))
     elif apothem is not None:
-        return apothem / math.cos(math.tau / (2 * n))
+        return apothem / math.cos(τ / (2 * n))
     else:
         raise ValueError("One of circumradius, side_length, or apothem must be provided.")
-
-@overload
-def transform(e: Canvas, f: ProjectiveTransformation) -> Canvas: ...
-@overload
-def transform(e: Group, f: ProjectiveTransformation) -> Group: ...
-@overload
-def transform[TrsE](e: TranslationalInvariant[TrsE], f: Translation) -> TrsE: ...
-@overload
-def transform[RigE](e: RigidInvariant[RigE], f: RigidTransformation) -> RigE: ...
-@overload
-def transform[AffE](e: AffineInvariant[AffE], f: AffineTransformation) -> AffE: ...
-@overload
-def transform[PrjE](e: ProjectiveInvariant[PrjE], f: ProjectiveTransformation) -> PrjE: ...
-@overload
-def transform(e: Parametric, f: ProjectiveTransformation) -> Parametric: ...
-@overload
-def transform(e: Implicit, f: ProjectiveTransformation) -> Implicit: ...
-@overload
-def transform(e: Element, f: AffineTransformation) -> Element: ...
-
-def transform(e, f):
-    if isinstance(e, Canvas):
-        return Canvas([transform(x, f) for x in e.elements], e.viewport)
-    if isinstance(e, Group):
-        return Group([transform(x, f) for x in e.elements])
-    elif isinstance(e, TranslationalInvariant) and isinstance(f, Translation):
-        return e.trans_transform(f)
-    elif isinstance(e, RigidInvariant) and isinstance(f, RigidTransformation):
-        return e.rigid_transform(f)
-    elif isinstance(e, AffineInvariant) and isinstance(f, AffineTransformation):
-        return e.aff_transform(f)
-    elif isinstance(e, ProjectiveInvariant) and isinstance(f, ProjectiveTransformation):
-        return e.proj_transform(f)
-    elif isinstance(e, Element) and isinstance(f, AffineTransformation):
-        return AnyAffinelyTransformed(e, f)  # ultimate fallback to SVG transform: can't be transformed within Ochra
-    else:
-        raise ValueError(f"Cannot transform {type(e)} by {type(f)}.")
-
-
-@overload
-def translate(e: Canvas, dx: Scalar, dy: Scalar) -> Canvas: ...
-@overload
-def translate(e: Group, dx: Scalar, dy: Scalar) -> Group: ...
-@overload
-def translate[TrsE](e: TranslationalInvariant[TrsE], dx: Scalar, dy: Scalar) -> TrsE: ...
-@overload
-def translate[RigE](e: RigidInvariant[RigE], dx: Scalar, dy: Scalar) -> RigE: ...
-@overload
-def translate[AffE](e: AffineInvariant[AffE], dx: Scalar, dy: Scalar) -> AffE: ...
-@overload
-def translate[PrjE](e: ProjectiveInvariant[PrjE], dx: Scalar, dy: Scalar) -> PrjE: ...
-@overload
-def translate(e: Element, dx: Scalar, dy: Scalar) -> Element: ...
-
-def translate(e, dx: Scalar, dy: Scalar):
-    return transform(e, Translation((dx, dy)))
 
 
 def intersect_interval_interval(i0: tuple[Scalar, Scalar], i1: tuple[Scalar, Scalar]) -> tuple[Scalar, Scalar] | Scalar | None:
@@ -1649,12 +1694,15 @@ def intersect_line_conic(l: Line, c: Conic) -> list[Point]:
 
 def intersect_line_aabb(l: Line, aabb: AxisAlignedRectangle) -> Point | list[Point] | LineSegment | None:
     scores = [l.implicit_func(v).item() for v in aabb.vertices]
-    num_ge_0 = sum(s >= 0 for s in scores)
-    if num_ge_0 == 0 or num_ge_0 == 4:
+    num_gt_0 = sum(s > 0 for s in scores)
+    if num_gt_0 == 0 or num_gt_0 == 4:
         return None  # no intersection
     else:
-        ps = [intersect_line_segment(l, s) for s in aabb.edges]  # TODO: overlapping points
-        return [p for p in ps if p is not None]
+        ps = [intersect_line_segment(l, s) for s in aabb.edges]
+        ps = [p for p in ps if p is not None]
+        if any(isinstance(p, LineSegment) for p in ps):
+            return [p for p in ps if isinstance(p, LineSegment)][0]  # line overlaps with aabb, return the segment
+        return [cast(Point, p) for p in ps]
 
 
 def clip_line_aabb(l: Line, aabb: AxisAlignedRectangle) -> LineSegment | None:

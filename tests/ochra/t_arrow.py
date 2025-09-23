@@ -6,6 +6,7 @@ import ochra.style as oxs
 from ochra.arrowhead import arrow_line, arrow_stealth, arrow_triangle
 from ochra.palettes import ios
 from ochra.functions import deg_to_rad
+from ochra.svg import save_svg
 
 stroke = oxs.Stroke(ios.blue, width=2, line_join=oxs.LineJoin.miter)
 
@@ -48,4 +49,4 @@ canvas = ox.Canvas(
 #        bbox = Text(text.py, Point.origin, angle, font).bbox
 #        return cls(text.py, right_center - bbox.right_center.as_vector(), angle, font)
 
-ox.svg.save_svg(canvas, "test.svg")
+save_svg(canvas, "test.svg")
