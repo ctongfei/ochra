@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 from jaxtyping import Float
 
-from ochra.util import Global
+from ochra.util import Global, IndexedSequence
 from ochra.geometry import (
     τ,
     Scalar,
@@ -37,14 +37,16 @@ from ochra.geometry import (
     PointSequenceI,
     PointSequence,
     RigidTransformation,
+    VectorSequence,
+    VectorSequenceI,
 )
 from ochra.style import Stroke, Fill
 from ochra.functions import (
     lerp,
     lerp_point,
     dist,
-    aligned_bbox_from_points,
-    aligned_bbox_from_bboxes,
+    aabb_from_points,
+    aabb_from_boxes,
     solve_quadratic,
     solve_linear,
     ui2r,
@@ -91,47 +93,63 @@ class Element(ABC):
         return aabb
 
     def transform(self, f: ProjectiveTransformation) -> 'Element':
+        """
+        Transforms this element by the given transformation.
+        Should always be overridden by subclasses by subclassing either `InferredTransformMixin` or `CustomTransformMixin`.
+        """
         raise NotImplementedError(f"transform() is not implemented for type {type(self)}.")
 
     def translate(self, dx: Scalar, dy: Scalar) -> 'Element':
         return self.transform(Translation((dx, dy)))
 
+    def rotate(self, θ: Scalar, anchor: PointI = Point.origin) -> 'Element':
+        if anchor == Point.origin:
+            return self.transform(Rotation(θ))
+        else:
+            return self.transform(Rotation.centered(θ, anchor))
+
+    def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> 'Element':
+        anchor = Point.mk(anchor)
+        if anchor == Point.origin:
+            return self.transform(Scaling((sx, sy)))
+        else:
+            return self.transform(Scaling.centered((sx, sy), anchor))
 
 
 class TranslationalInvariant[E: Element](ABC):
     """
-    Represents a type that is type-invariant under translation. `E` is an F-bounded type.
+    Represents a type that is type-invariant under translation.
     """
     @abstractmethod
-    def trans_transform(self, f: Translation) -> E:
-        raise NotImplementedError(f"trans_transform() is not implemented for type {type(self)}.")
+    def _trans_transform(self, f: Translation) -> E:
+        raise NotImplementedError(f"_trans_transform() is not implemented for type {type(self)}.")
 
 
 class RigidInvariant[E: Element](ABC):
     """
-    Represents a type that is type-invariant under rigid transformations (translation and rotation). `E` is an F-bounded type.
+    Represents a type that is type-invariant under rigid transformations (translation and rotation).
     """
     @abstractmethod
-    def rigid_transform(self, f: RigidTransformation) -> E:
-        raise NotImplementedError(f"rigid_transform() is not implemented for type {type(self)}.")
+    def _rigid_transform(self, f: RigidTransformation) -> E:
+        raise NotImplementedError(f"_rigid_transform() is not implemented for type {type(self)}.")
 
 
 class AffineInvariant[E: Element](ABC):
     """
-    Represents a type that is type-invariant under affine transformations. `E` is an F-bounded type.
+    Represents a type that is type-invariant under affine transformations.
     """
     @abstractmethod
-    def aff_transform(self, f: AffineTransformation) -> E:
-        raise NotImplementedError(f"aff_transform() is not implemented for type {type(self)}.")
+    def _aff_transform(self, f: AffineTransformation) -> E:
+        raise NotImplementedError(f"_aff_transform() is not implemented for type {type(self)}.")
 
 
 class ProjectiveInvariant[E: Element](ABC):
     """
-    Represents a type that is type-invariant under projective transformations. `E` is an F-bounded type.
+    Represents a type that is type-invariant under projective transformations.
     """
     @abstractmethod
-    def proj_transform(self, f: ProjectiveTransformation) -> E:
-        raise NotImplementedError(f"proj_transform() is not implemented for type {type(self)}.")
+    def _proj_transform(self, f: ProjectiveTransformation) -> E:
+        raise NotImplementedError(f"_proj_transform() is not implemented for type {type(self)}.")
 
 
 class InferredTransformMixin(Element):
@@ -152,13 +170,13 @@ class InferredTransformMixin(Element):
 
     def transform(self, f):
         if isinstance(self, TranslationalInvariant) and isinstance(f, Translation):
-            return self.trans_transform(f)
+            return self._trans_transform(f)
         elif isinstance(self, RigidInvariant) and isinstance(f, RigidTransformation):
-            return self.rigid_transform(f)
+            return self._rigid_transform(f)
         elif isinstance(self, AffineInvariant) and isinstance(f, AffineTransformation):
-            return self.aff_transform(f)
+            return self._aff_transform(f)
         elif isinstance(self, ProjectiveInvariant) and isinstance(f, ProjectiveTransformation):
-            return self.proj_transform(f)
+            return self._proj_transform(f)
         elif isinstance(self, Element) and isinstance(f, AffineTransformation):
             return AnyAffinelyTransformed(
                 self, f
@@ -203,6 +221,7 @@ class InferredTransformMixin(Element):
     def scale(self: Element, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> Element: ...
 
     def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin):
+        anchor = Point.mk(anchor)
         if anchor == Point.origin:
             return self.transform(Scaling((sx, sy)))
         else:
@@ -210,20 +229,7 @@ class InferredTransformMixin(Element):
 
 
 class CustomTransformMixin(Element):
-    def translate(self, dx: Scalar, dy: Scalar) -> 'Element':
-        return self.transform(Translation((dx, dy)))
-
-    def rotate(self, θ: Scalar, anchor: PointI = Point.origin) -> 'Element':
-        if anchor == Point.origin:
-            return self.transform(Rotation(θ))
-        else:
-            return self.transform(Rotation.centered(θ, anchor))
-
-    def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> 'Element':
-        if anchor == Point.origin:
-            return self.transform(Scaling((sx, sy)))
-        else:
-            return self.transform(Scaling.centered((sx, sy), anchor))
+    pass
 
 
 class AnyAffinelyTransformed(InferredTransformMixin, AffineInvariant['AnyAffinelyTransformed']):
@@ -236,7 +242,7 @@ class AnyAffinelyTransformed(InferredTransformMixin, AffineInvariant['AnyAffinel
         self.element = element
         self.transformation = transformation
 
-    def aff_transform(self, f: AffineTransformation) -> 'AnyAffinelyTransformed':
+    def _aff_transform(self, f: AffineTransformation) -> 'AnyAffinelyTransformed':
         return AnyAffinelyTransformed(self.element, f @ self.transformation)
 
     def aabb(self) -> 'AxisAlignedRectangle | None':
@@ -256,11 +262,11 @@ class Group(CustomTransformMixin):
 
     def aabb(self) -> 'AxisAlignedRectangle | None':
         bboxes = [e.aabb() for e in self.elements]
-        return aligned_bbox_from_bboxes(bboxes)
+        return aabb_from_boxes(bboxes)
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
         bboxes = [e.visual_bbox() for e in self.elements]
-        return aligned_bbox_from_bboxes(bboxes)
+        return aabb_from_boxes(bboxes)
 
     def recursive_children(self) -> Iterator[Element]:
         """
@@ -295,18 +301,42 @@ class Annotation(InferredTransformMixin, ProjectiveInvariant['Annotation']):
     def materialize(self) -> Element:
         return self.materialize_at(self.anchor)
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Annotation':
+    def _proj_transform(self, f: ProjectiveTransformation) -> 'Annotation':
         new_anchor = f(self.anchor)
         assert new_anchor is not None, "Annotations cannot be transformed to infinity."
         return Annotation(new_anchor, self.materialize_at)
 
 
-class Parametric(CustomTransformMixin):
+class Parametric(Element, ABC):
     r"""
     Represents any shape $[0, 1] \to \mathbb{R}^2$ whose points can be parameterized by a single parameter $t \in [0, 1]$.
     """
 
     stroke: Stroke
+
+    @abstractmethod
+    def at(self, t: Scalar) -> Point:
+        """
+        Returns the point at parameter $t$.
+        :param t: A parameter in [0, 1].
+        """
+        raise NotImplementedError
+
+    def _raw_at(self, t: Scalar) -> Float[jax.Array, "2"]:
+        return self.at(t).loc
+
+    @cached_property
+    def _raw_at_batched(self):
+        return jax.jit(jax.vmap(self._raw_at))
+
+    @cached_property
+    def _raw_derivative(self):
+        return jax.jit(jax.jacfwd(self._raw_at))
+
+    @cached_property
+    def _raw_derivative_batched(self):
+        return jax.jit(jax.vmap(self._raw_derivative))
+
 
     @property
     def pieces(self) -> Sequence[tuple[float, float]]:
@@ -317,20 +347,12 @@ class Parametric(CustomTransformMixin):
         """
         return [(0.0, 1.0)]
 
-    @cached_property
-    def derivative(self):
+    def derivative(self, t: Scalar) -> Vector:
         r"""
         Computes the derivative $\dfrac{{\rm d}\mathbf{x}}{{\rm d}t}$ of the parametric function.
         Consider an object moving along the curve: the derivative is the velocity vector.
         """
-        return jax.jit(jax.jacfwd(self.at))  # cache this
-
-    def at(self, t: Scalar) -> Point:
-        """
-        Returns the point at parameter $t$.
-        :param t: A parameter in [0, 1].
-        """
-        raise NotImplementedError
+        return Vector(self._raw_derivative(t))
 
     def tangent_vector_at(self, t: Scalar) -> Vector:
         """
@@ -339,7 +361,7 @@ class Parametric(CustomTransformMixin):
         :param t: A parameter in [0, 1].
         """
         g = self.derivative(t)
-        return g.to_vector().normalize()
+        return g.normalize()
 
     def tangent_line_at(self, t: Scalar) -> "Line":
         """
@@ -351,19 +373,20 @@ class Parametric(CustomTransformMixin):
     def approx_as_polyline(
             self,
             num_samples_per_piece: int = Global.num_first_order_steps,
-            boundary_eps: float = Global.boundary_eps
+            boundary_eps: float = Global.boundary_eps,
+            **kwargs
     ) -> Element:
         """
         Approximates the element as a polyline, or a group of polylines if not continuous.
         :param num_samples_per_piece: The number of samples per continuous piece.
         :param boundary_eps: The epsilon to add to the boundary of each piece.
         """
-        stroke = getattr(self, "stroke", None)
+        kwargs = {"stroke": self.stroke, **kwargs}
         pls = []
         for p in self.pieces:
             ts = jnp.linspace(p[0], p[1], num_samples_per_piece)
             ts = ts.at[0].set(p[0] + boundary_eps).at[-1].set(p[1] - boundary_eps)
-            pl = Polyline([self.at(t) for t in ts], stroke=stroke or Stroke())
+            pl = Polyline([self.at(t) for t in ts], **kwargs)
             pls.append(pl)
 
         if len(pls) == 1:
@@ -396,13 +419,36 @@ class Parametric(CustomTransformMixin):
             all_points = list(
                 chain(*zip(points, control_points))
             ) + [points[-1]]
-            qbp = QuadraticBezierPath(jnp.array([x.loc for x in all_points]), **kwargs)
+            qbp = QuadraticBezierSpline(all_points, **kwargs)
             qbps.append(qbp)
 
         if len(qbps) == 1:
             return qbps[0]
         else:
             return Group(qbps)
+
+    def approx_as_hermite_spline(
+            self,
+            num_samples_per_piece: int = Global.num_hermite_steps,
+            eps: float = Global.boundary_eps,
+            **kwargs
+    ) -> Element:
+        kwargs = {"stroke": self.stroke, **kwargs}
+        hss = []
+        for p in self.pieces:
+            n = num_samples_per_piece
+            ts = jnp.linspace(p[0], p[1], n)
+            ts = ts.at[0].set(p[0] + eps).at[-1].set(p[1] - eps)
+            points = self._raw_at_batched(ts)
+            tangents = self._raw_derivative_batched(ts) / num_samples_per_piece
+            # scale tangents to be over [0, 1] for each segment
+            hs = HermiteSpline(points, tangents, **kwargs)
+            hss.append(hs)
+
+        if len(hss) == 1:
+            return hss[0]
+        else:
+            return Group(hss)
 
     def transform(self, f: ProjectiveTransformation) -> 'Parametric':
         return ParametricFromFunction(lambda t: cast(Point, f(self.at(t))), stroke=self.stroke)
@@ -595,7 +641,7 @@ class Implicit(CustomTransformMixin):
             step: float = Global.second_order_step_size,
             eps: float = Global.approx_eps,
             **kwargs
-    ) -> "QuadraticBezierPath":
+    ) -> "QuadraticBezierSpline":
         p0 = self._get_point(p0, eps)
         points = [p0]
         tangent_vectors = [self._tangent_vector_at_point(p0)]
@@ -611,7 +657,7 @@ class Implicit(CustomTransformMixin):
             )
             for i in range(num_steps - 1)
         ]
-        qbp = QuadraticBezierPath.from_points(points, control_points, **kwargs)
+        qbp = QuadraticBezierSpline.from_points(points, control_points, **kwargs)
         return qbp
 
     def transform(self, f: ProjectiveTransformation) -> 'Implicit':
@@ -693,7 +739,7 @@ class Line(InferredTransformMixin, Parametric, Implicit, ProjectiveInvariant['Li
         return None
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
-        return aligned_bbox_from_points([self.at(0.25), self.at(0.75)])
+        return aabb_from_points([self.at(0.25), self.at(0.75)])
 
     def __contains__(self, p: Point):
         return jnp.isclose(self.implicit_func(p), 0.0, atol=Global.approx_eps)
@@ -709,7 +755,7 @@ class Line(InferredTransformMixin, Parametric, Implicit, ProjectiveInvariant['Li
             d = 1.0  # TODO: ?
         return p0 + (Vector.unit(self.angle) * d * ui2r(t))
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Line':
+    def _proj_transform(self, f: ProjectiveTransformation) -> 'Line':
         v = f.inverse().matrix.T.dot(self.coef)
         return Line(v, stroke=self.stroke)
 
@@ -794,7 +840,7 @@ class Ray(Parametric):
         return None
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
-        return aligned_bbox_from_points([self.at(0.0), self.at(0.75)])
+        return aabb_from_points([self.at(0.0), self.at(0.75)])
 
 
 class LineSegment(InferredTransformMixin, Parametric, ProjectiveInvariant['LineSegment']):
@@ -864,7 +910,7 @@ class LineSegment(InferredTransformMixin, Parametric, ProjectiveInvariant['LineS
             Point.mk(max(self.p0.x, self.p1.x), max(self.p0.y, self.p1.y))
         )
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'LineSegment':
+    def _proj_transform(self, f: ProjectiveTransformation) -> 'LineSegment':
         p0 = f(self.p0)
         p1 = f(self.p1)
         assert p0 is not None and p1 is not None, "Line segments cannot be transformed to infinity."
@@ -873,224 +919,6 @@ class LineSegment(InferredTransformMixin, Parametric, ProjectiveInvariant['LineS
             stroke=self.stroke,
             marker_start=self.marker_start,
             marker_end=self.marker_end
-        )
-
-
-class Polyline(InferredTransformMixin, Parametric, ProjectiveInvariant['Polyline']):
-
-    def __init__(self,
-                 vertices: PointSequenceI,
-                 stroke: Stroke = Stroke(),
-                 marker_start: Optional['Marker'] = None,
-                 marker_mid: Optional['Marker'] = None,
-                 marker_end: Optional['Marker'] = None,
-                 ):
-        self.vertices = PointSequence.mk(vertices)
-        self.stroke = stroke
-        self.marker_start = marker_start
-        self.marker_mid = marker_mid
-        self.marker_end = marker_end
-        for m in [marker_start, marker_mid, marker_end]:
-            if m is not None:
-                Marker.register_as_marker(m)
-
-    @property
-    def num_vertices(self):
-        return len(self.vertices)
-
-    @property
-    def segments(self):
-        return [
-            LineSegment(self.vertices[i], self.vertices[i + 1])
-            for i in range(self.num_vertices - 1)
-        ]
-
-    def aabb(self) -> 'AxisAlignedRectangle':
-        from ochra.functions import aligned_bbox_from_points
-        return aligned_bbox_from_points(self.vertices)
-
-    def at(self, t: Scalar):
-        if t == 1.0:
-            return self.vertices[-1]
-        x = t * (self.num_vertices - 1)
-        i = int(x)
-        t0 = x - i
-        return self.segments[i].at(t0)
-
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Polyline':
-        return Polyline(
-            f.apply_batch(self.vertices),
-            stroke=self.stroke,
-            marker_start=self.marker_start,
-            marker_mid=self.marker_mid,
-            marker_end=self.marker_end
-        )
-
-
-class Polygon(InferredTransformMixin, Parametric, ProjectiveInvariant['Polygon']):
-    """
-    Represents a polygon in the plane.
-    """
-
-    def __init__(self,
-                 vertices: PointSequenceI,
-                 stroke: Stroke = Stroke(),
-                 fill: Fill = Fill(),
-                 marker: Optional['Marker'] = None,
-                 ):
-        self.vertices: PointSequence = PointSequence.mk(vertices)
-        self.stroke = stroke
-        self.fill = fill
-        self.marker = marker
-
-    @property
-    def num_vertices(self):
-        return len(self.vertices)
-
-    @property
-    def edges(self):
-        """
-        Returns the edges of the polygon as a list of line segments.
-        """
-        return [
-            LineSegment(self.vertices[i], self.vertices[(i + 1) % self.num_vertices])
-            for i in range(self.num_vertices)
-        ]
-
-    def aabb(self) -> 'AxisAlignedRectangle':
-        from ochra.functions import aligned_bbox_from_points
-        return aligned_bbox_from_points(self.vertices)
-
-    def at(self, t: Scalar):
-        if t == 1.0:
-            return self.vertices[0]
-        x = t * self.num_vertices
-        i = int(x)
-        t0 = x - i
-        return self.edges[i].at(t0)
-
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Polygon':
-        return Polygon(f.apply_batch(self.vertices), self.stroke, self.fill, self.marker)
-
-    @classmethod
-    def regular(cls,
-                n: int,
-                *,
-                circumradius: Optional[float] = None,
-                side_length: Optional[float] = None,
-                apothem: Optional[float] = None,
-                **kwargs
-                ):
-        """
-        Draws a regular convex polygon with n vertices and n edges.
-        :param n: The number of vertices.
-        :param circumradius: The radius of the circumcircle.
-        :param side_length: Length of each side.
-        :param apothem: Length of the center to an side edge.
-        :param kwargs: Style parameters.
-        :return:
-        """
-        circumradius = _get_circumradius(n, circumradius, side_length, apothem)
-        angles = jnp.arange(n, dtype=jnp.float32) / n * τ
-        vertices = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1) * circumradius
-        return cls(
-            vertices=PointSequence(vertices),
-            **kwargs
-        )
-
-    @classmethod
-    def regular_star(cls,
-                     p: int,
-                     q: int,
-                     *,
-                     circumradius: float = 1.0,
-                     **kwargs
-                     ):
-        """
-        Draws a regular star polygon with Schläfli symbol $\\{p/q\\}$.
-        :param p: The number of vertices.
-        :param q: The step size.
-        """
-        def mk_part(j: int) -> "Polygon":
-            angles = jnp.arange(j, p * q, q, dtype=jnp.float32) / p * τ
-            vertices = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1) * circumradius
-            return cls(PointSequence(vertices), **kwargs)
-
-        num_parts = math.gcd(p, q)
-        if num_parts == 1:
-            return mk_part(0)
-        else:
-            return JoinedParametric([mk_part(i) for i in range(num_parts)])
-
-
-class Rectangle(Polygon, RigidInvariant['Rectangle']):
-
-    def __init__(self, bottom_left: PointI, top_right: PointI, angle: Scalar = 0.0, stroke: Stroke = Stroke(), fill: Fill = Fill()):
-        self.bottom_left = Point.mk(bottom_left)
-        self.top_right = Point.mk(top_right)
-        ray = Line.from_point_and_vector(self.bottom_left, Vector.unit(angle))
-        self.bottom_right = ray.closest_to(top_right)
-        self.top_left = self.top_right + (self.bottom_left - self.bottom_right)
-        vertices = [self.bottom_left, self.bottom_right, self.top_right, self.top_left]
-        self.angle = angle
-        self.width = dist(self.bottom_left, self.bottom_right)
-        self.height = dist(self.bottom_right, self.top_right)
-        super().__init__(vertices, stroke, fill)
-
-    @property
-    def center(self):
-        return lerp_point(self.bottom_left, self.top_right, 0.5)
-
-    @property
-    def top_center(self):
-        return lerp_point(self.top_left, self.top_right, 0.5)
-
-    @property
-    def right_center(self):
-        return lerp_point(self.bottom_right, self.top_right, 0.5)
-
-    @property
-    def bottom_center(self):
-        return lerp_point(self.bottom_left, self.bottom_right, 0.5)
-
-    @property
-    def left_center(self):
-        return lerp_point(self.bottom_left, self.top_left, 0.5)
-
-    def rigid_transform(self, f: RigidTransformation) -> 'Rectangle':
-        trs, rot = f.decompose()
-        return Rectangle(
-            trs(self.bottom_left),
-            trs(self.top_right),
-            rot.angle,
-            stroke=self.stroke,
-            fill=self.fill
-        )
-
-
-class AxisAlignedRectangle(Rectangle, TranslationalInvariant['AxisAlignedRectangle']):
-
-    def __init__(self, bottom_left: PointI, top_right: PointI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
-        super().__init__(bottom_left, top_right, 0.0, stroke, fill)
-
-    def aabb(self) -> 'AxisAlignedRectangle':
-        return self
-
-    def pad(self, dx: Scalar, dy: Scalar) -> 'AxisAlignedRectangle':
-        return AxisAlignedRectangle(
-            self.bottom_left.translate(-dx, -dy),
-            self.top_right.translate(dx, dy),
-            stroke=self.stroke,
-            fill=self.fill
-        )
-
-    def trans_transform(self, f: Translation) -> 'AxisAlignedRectangle':
-        dx, dy = f.vec.x, f.vec.y
-        return AxisAlignedRectangle(
-            self.bottom_left.translate(dx, dy),
-            self.top_right.translate(dx, dy),
-            stroke=self.stroke,
-            fill=self.fill
         )
 
 
@@ -1140,7 +968,7 @@ class Conic(InferredTransformMixin, Implicit, Parametric, ProjectiveInvariant['C
         Returns the pole point of the given line.
         """
         l = Line.mk(l)
-        return ProjPoint(self.proj_matrix @ l.coef).to_point_unsafe()
+        return ProjPoint(self.proj_matrix @ l.coef).to_point()
 
     @classmethod
     def create(cls, coef: ConicI, stroke: Stroke = Stroke(), fill: Fill = Fill()) -> 'Conic':
@@ -1174,7 +1002,7 @@ class Conic(InferredTransformMixin, Implicit, Parametric, ProjectiveInvariant['C
             else:
                 return Ellipse(coef, stroke, fill)
 
-    def proj_transform(self, f: ProjectiveTransformation) -> 'Conic':
+    def _proj_transform(self, f: ProjectiveTransformation) -> 'Conic':
         t = f.inverse().matrix
         return Conic.create(t.T @ self.proj_matrix @ t, stroke=self.stroke, fill=self.fill)
 
@@ -1275,7 +1103,7 @@ class Ellipse(Conic, Parametric, AffineInvariant['Ellipse']):
     def covertex1(self) -> Point:
         return self.center + Vector.unit(self.angle + τ / 4) * self.b
 
-    def circumscribed_rectangle(self) -> Rectangle:
+    def circumscribed_rectangle(self) -> 'Rectangle':
         bottom_left: Point = self.vertex0 + (self.covertex0 - self.center)
         top_right: Point = self.vertex1 + (self.covertex1 - self.center)
         return Rectangle(bottom_left, top_right, self.angle)
@@ -1310,7 +1138,7 @@ class Ellipse(Conic, Parametric, AffineInvariant['Ellipse']):
         y = self.center.y + self.b * jnp.sin(θ) * jnp.cos(φ) + self.a * jnp.cos(θ) * jnp.sin(φ)
         return Point(jnp.array([x, y]))
 
-    def aff_transform(self: 'Ellipse', f: AffineTransformation) -> 'Ellipse':
+    def _aff_transform(self: 'Ellipse', f: AffineTransformation) -> 'Ellipse':
         t = f.inverse().matrix
         return Ellipse(t.T @ self.proj_matrix @ t, stroke=self.stroke, fill=self.fill)
 
@@ -1346,7 +1174,7 @@ class Circle(Ellipse, Parametric, RigidInvariant['Circle']):
             self.center + Vector.mk((self.radius, self.radius))
         )
 
-    def rigid_transform(self: 'Circle', f: RigidTransformation) -> 'Circle':
+    def _rigid_transform(self: 'Circle', f: RigidTransformation) -> 'Circle':
         return Circle(self.radius, f(self.center), stroke=self.stroke, fill=self.fill)
 
     @classmethod
@@ -1421,7 +1249,7 @@ class Parabola(Conic, Parametric, AffineInvariant['Parabola']):
     def slice(self, t0: Scalar, t1: Scalar, **kwargs) -> 'QuadraticBezierCurve':
         p0 = self.at(t0)
         p1 = self.at(t1)
-        return QuadraticBezierCurve.from_points(
+        return QuadraticBezierCurve(
             p0,
             get_quadratic_bezier_curve_control_point_by_tangent(
                 p0, self.tangent_vector_at(t0),
@@ -1438,40 +1266,35 @@ class Parabola(Conic, Parametric, AffineInvariant['Parabola']):
         pp = self._aff_trans.matrix @ p
         return Point(pp[:2] / pp[2])
 
-    def aff_transform(self: 'Parabola', f: AffineTransformation) -> 'Parabola':
+    def _aff_transform(self: 'Parabola', f: AffineTransformation) -> 'Parabola':
         t = f.inverse().matrix
         return Parabola(t.T @ self.proj_matrix @ t, stroke=self.stroke)
 
     def visual_bbox(self) -> 'AxisAlignedRectangle':
-        return aligned_bbox_from_points([self.at(0.1), self.at(0.5), self.at(0.9)])
+        return aabb_from_points([self.at(0.1), self.at(0.5), self.at(0.9)])
 
     @classmethod
     def from_focus_and_directrix(cls, focus: PointI, directrix: LineI, **kwargs):
         return Conic.from_focus_directrix_eccentricity(focus, directrix, 1.0, **kwargs)
 
 
-class QuadraticBezierCurve(InferredTransformMixin, Parametric, ProjectiveInvariant['QuadraticBezierCurve']):
+class QuadraticBezierCurve(InferredTransformMixin, Parametric, AffineInvariant['QuadraticBezierCurve']):
+    """
+    Represents a quadratic Bézier curve in the plane.
+    This is essentially a segment of a parabola.
+    """
 
-    def __init__(self, mat: Float[jax.Array, "3 2"], stroke: Stroke = Stroke()):
-        self.mat = mat
+    def __init__(self, p0: PointI, p1: PointI, p2: PointI, stroke: Stroke = Stroke()):
+        self.p0 = Point.mk(p0)
+        self.p1 = Point.mk(p1)
+        self.p2 = Point.mk(p2)
         self.stroke = stroke
-
-    @property
-    def p0(self) -> Point:
-        return Point(self.mat[0, :])
-
-    @property
-    def p1(self) -> Point:
-        return Point(self.mat[1, :])
-
-    @property
-    def p2(self) -> Point:
-        return Point(self.mat[2, :])
+        self._mat = jnp.array([self.p0.loc, self.p1.loc, self.p2.loc])
 
     def at(self, t: Scalar):
         s = 1 - t
         v = jnp.array([s * s, 2 * s * t, t * t])
-        return Point(self.mat.T @ v)
+        return Point(self._mat.T @ v)
 
     def aabb(self) -> 'AxisAlignedRectangle | None':
         potential_extrema = [self.p0, self.p2]
@@ -1485,58 +1308,326 @@ class QuadraticBezierCurve(InferredTransformMixin, Parametric, ProjectiveInvaria
             t = (self.p0.y - self.p1.y) / denom_y
             if 0 <= t <= 1:
                 potential_extrema.append(self.at(t))
-        return aligned_bbox_from_points(potential_extrema)
+        return aabb_from_points(potential_extrema)
+
+    def _aff_transform(self: 'QuadraticBezierCurve', f: AffineTransformation) -> 'QuadraticBezierCurve':
+        return QuadraticBezierCurve(f(self.p0), f(self.p1), f(self.p2), stroke=self.stroke)
 
 
-    def proj_transform(self: 'QuadraticBezierCurve', f: ProjectiveTransformation) -> 'QuadraticBezierCurve':
-        return QuadraticBezierCurve(f.apply_batch(PointSequence(self.mat)).points, stroke=self.stroke)
-
-    @classmethod
-    def from_points(cls, p0: PointI, p1: PointI, p2: PointI, **kwargs):
-        return cls(jnp.stack([Point.mk(p).loc for p in [p0, p1, p2]]), **kwargs)
-
-
-class QuadraticBezierPath(Parametric, ProjectiveInvariant['QuadraticBezierPath']):
-    def __init__(
-            self,
-            mat: Float[jax.Array, "2*p+1 2"],
-            stroke: Stroke = Stroke(),
-            markers: 'MarkerConfig | None' = None,
-    ):
-        from ochra.mark import Marker
-        m, n = mat.shape
-        self.num_segments = (m - 1) // 2
-        assert n == 2
-        assert m >= 3 and m % 2 == 1
-        self.mat = mat
+class CubicBezierCurve(Parametric):
+    def __init__(self, p0: PointI, p1: PointI, p2: PointI, p3: PointI, stroke: Stroke = Stroke()):
+        self.p0 = Point.mk(p0)
+        self.p1 = Point.mk(p1)
+        self.p2 = Point.mk(p2)
+        self.p3 = Point.mk(p3)
+        self._mat = jnp.array([self.p0.loc, self.p1.loc, self.p2.loc, self.p3.loc])
         self.stroke = stroke
-        self.markers = markers
-        if self.markers:
-            for m in [self.markers.start, self.markers.mid, self.markers.end]:
+
+    def at(self, t: Scalar):
+        s = 1 - t
+        v = jnp.array([s * s * s, 3 * s * s * t, 3 * s * t * t, t * t * t])
+        return Point(self._mat.T @ v)
+
+    def aabb(self) -> 'AxisAlignedRectangle | None':
+        pass
+
+    def aff_transform(self: 'CubicBezierCurve', f: AffineTransformation) -> 'CubicBezierCurve':
+        return CubicBezierCurve(f(self.p0), f(self.p1), f(self.p2), f(self.p3), stroke=self.stroke)
+
+
+class Spline[C: Parametric](Parametric, ABC):
+    """
+    Represents a spline, which is a sequence of connected segments.
+    """
+
+    def __init__(self, stroke: Stroke = Stroke(), marker_config: 'MarkerConfig | None' = None):
+        self.stroke = stroke
+        self.marker_config = marker_config
+        if self.marker_config:
+            for m in [self.marker_config.start, self.marker_config.mid, self.marker_config.end]:
                 if m is not None:
                     Marker.register_as_marker(m)
 
-    def points(self) -> Sequence[Point]:
-        return [Point(self.mat[i, :]) for i in range(0, self.mat.shape[0], 2)]
+    @property
+    @abstractmethod
+    def num_segments(self) -> int:
+        raise NotImplementedError
 
-    def segments(self) -> Sequence[QuadraticBezierCurve]:
+    @property
+    def num_knots(self) -> int:
+        return self.num_segments + 1
+
+    @abstractmethod
+    def knot(self, i: int) -> Point:
+        raise NotImplementedError
+
+    @abstractmethod
+    def segment(self, i: int) -> C:
+        raise NotImplementedError
+
+    @abstractmethod
+    def subspline(self, i: int, j: int) -> Self:
+        raise NotImplementedError
+
+    @property
+    def knots(self) -> Sequence[Point]:
+        return IndexedSequence(self.knot, self.num_segments + 1)
+
+    @property
+    def segments(self) -> Sequence[C]:
+        return IndexedSequence(self.segment, self.num_segments)
+
+    def at(self, t: Scalar) -> Point:
+        t = t * self.num_segments
+        i = jnp.floor(t).astype(jnp.int32)
+        i = jnp.clip(i, 0, self.num_segments - 1)
+        t0 = t - i
+        if isinstance(t, jax.core.Tracer):
+            segments = [self.segment(i) for i in range(self.num_segments)]
+            return jax.lax.switch(i, [s.at for s in segments], t0)
+        else:
+            return self.segment(i.item()).at(t0)
+
+
+class Polyline(InferredTransformMixin, Spline[LineSegment], ProjectiveInvariant['Polyline']):
+
+    def __init__(self,
+                 points: PointSequenceI,
+                 stroke: Stroke = Stroke(),
+                 marker_config: Optional['MarkerConfig'] = None,
+                 ):
+        super().__init__(stroke, marker_config)
+        self.points = PointSequence.mk(points)
+
+    @property
+    def knots(self):
+        return self.points
+
+    @property
+    def num_vertices(self):
+        return len(self.knots)
+
+    @property
+    def num_segments(self):
+        return self.num_vertices - 1
+
+    def segment(self, i: int) -> LineSegment:
+        return LineSegment(self.knots[i], self.knots[i + 1])
+
+    def knot(self, i: int) -> Point:
+        return self.knots[i]
+
+    def subspline(self, i: int, j: int) -> 'Polyline':
+        return Polyline(self.knots[i:j + 1])
+
+    def aabb(self) -> 'AxisAlignedRectangle':
+        from ochra.functions import aabb_from_points
+        return aabb_from_points(self.knots)
+
+    def _proj_transform(self, f: ProjectiveTransformation) -> 'Polyline':
+        return Polyline(
+            f.apply_batch(self.knots),
+            stroke=self.stroke,
+            marker_config=self.marker_config
+        )
+
+
+class Polygon(InferredTransformMixin, Parametric, ProjectiveInvariant['Polygon']):
+    """
+    Represents a polygon in the plane.
+    """
+
+    def __init__(self,
+                 vertices: PointSequenceI,
+                 stroke: Stroke = Stroke(),
+                 fill: Fill = Fill(),
+                 marker: Optional['Marker'] = None,
+                 ):
+        self.vertices: PointSequence = PointSequence.mk(vertices)
+        self.stroke = stroke
+        self.fill = fill
+        self.marker = marker
+
+    @property
+    def num_vertices(self):
+        return len(self.vertices)
+
+    @property
+    def edges(self):
+        """
+        Returns the edges of the polygon as a list of line segments.
+        """
         return [
-            QuadraticBezierCurve(self.mat[i:i + 3, :])
-            for i in range(0, self.mat.shape[0], 2)
+            LineSegment(self.vertices[i], self.vertices[(i + 1) % self.num_vertices])
+            for i in range(self.num_vertices)
         ]
 
-    def aabb(self) -> 'AxisAlignedRectangle | None':
-        # TODO: not correct
-        pass
+    def aabb(self) -> 'AxisAlignedRectangle':
+        from ochra.functions import aabb_from_points
+        return aabb_from_points(self.vertices)
 
     def at(self, t: Scalar):
         if t == 1.0:
-            return Point(self.mat[-1, :])
+            return self.vertices[0]
+        x = t * self.num_vertices
+        i = int(x)
+        t0 = x - i
+        return self.edges[i].at(t0)
+
+    def _proj_transform(self, f: ProjectiveTransformation) -> 'Polygon':
+        return Polygon(f.apply_batch(self.vertices), self.stroke, self.fill, self.marker)
+
+    @classmethod
+    def regular(cls,
+                n: int,
+                *,
+                circumradius: Optional[float] = None,
+                side_length: Optional[float] = None,
+                apothem: Optional[float] = None,
+                **kwargs
+                ):
+        """
+        Draws a regular convex polygon with n vertices and n edges.
+        :param n: The number of vertices.
+        :param circumradius: The radius of the circumcircle.
+        :param side_length: Length of each side.
+        :param apothem: Length of the center to an side edge.
+        :param kwargs: Style parameters.
+        :return:
+        """
+        circumradius = _get_circumradius(n, circumradius, side_length, apothem)
+        angles = jnp.arange(n, dtype=jnp.float32) / n * τ
+        vertices = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1) * circumradius
+        return cls(
+            vertices=PointSequence(vertices),
+            **kwargs
+        )
+
+    @classmethod
+    def regular_star(cls,
+                     p: int,
+                     q: int,
+                     *,
+                     circumradius: float = 1.0,
+                     **kwargs
+                     ):
+        """
+        Draws a regular star polygon with Schläfli symbol $\\{p/q\\}$.
+        :param p: The number of vertices.
+        :param q: The step size.
+        """
+        def mk_part(j: int) -> "Polygon":
+            angles = jnp.arange(j, p * q, q, dtype=jnp.float32) / p * τ
+            vertices = jnp.stack([jnp.cos(angles), jnp.sin(angles)], axis=1) * circumradius
+            return cls(PointSequence(vertices), **kwargs)
+
+        num_parts = math.gcd(p, q)
+        if num_parts == 1:
+            return mk_part(0)
         else:
-            i = int(t * self.num_segments)
-            t0 = t * self.num_segments - i
-            qbc = QuadraticBezierCurve(self.mat[2 * i:2 * i + 3, :])
-            return qbc.at(t0)
+            return JoinedParametric([mk_part(i) for i in range(num_parts)])
+
+
+class Rectangle(Polygon, RigidInvariant['Rectangle']):
+
+    def __init__(self, bottom_left: PointI, top_right: PointI, angle: Scalar = 0.0, stroke: Stroke = Stroke(), fill: Fill = Fill()):
+        self.bottom_left = Point.mk(bottom_left)
+        self.top_right = Point.mk(top_right)
+        ray = Line.from_point_and_vector(self.bottom_left, Vector.unit(angle))
+        self.bottom_right = ray.closest_to(top_right)
+        self.top_left = self.top_right + (self.bottom_left - self.bottom_right)
+        vertices = [self.bottom_left, self.bottom_right, self.top_right, self.top_left]
+        self.angle = angle
+        self.width = dist(self.bottom_left, self.bottom_right)
+        self.height = dist(self.bottom_right, self.top_right)
+        super().__init__(vertices, stroke, fill)
+
+    @property
+    def center(self):
+        return lerp_point(self.bottom_left, self.top_right, 0.5)
+
+    @property
+    def top_center(self):
+        return lerp_point(self.top_left, self.top_right, 0.5)
+
+    @property
+    def right_center(self):
+        return lerp_point(self.bottom_right, self.top_right, 0.5)
+
+    @property
+    def bottom_center(self):
+        return lerp_point(self.bottom_left, self.bottom_right, 0.5)
+
+    @property
+    def left_center(self):
+        return lerp_point(self.bottom_left, self.top_left, 0.5)
+
+    def _rigid_transform(self, f: RigidTransformation) -> 'Rectangle':
+        trs, rot = f.decompose_rigid()
+        return Rectangle(
+            trs(self.bottom_left),
+            trs(self.top_right),
+            rot.angle,
+            stroke=self.stroke,
+            fill=self.fill
+        )
+
+
+class AxisAlignedRectangle(Rectangle, TranslationalInvariant['AxisAlignedRectangle']):
+
+    def __init__(self, bottom_left: PointI, top_right: PointI, stroke: Stroke = Stroke(), fill: Fill = Fill()):
+        super().__init__(bottom_left, top_right, 0.0, stroke, fill)
+
+    def aabb(self) -> 'AxisAlignedRectangle':
+        return self
+
+    def pad(self, dx: Scalar, dy: Scalar) -> 'AxisAlignedRectangle':
+        return AxisAlignedRectangle(
+            self.bottom_left.translate(-dx, -dy),
+            self.top_right.translate(dx, dy),
+            stroke=self.stroke,
+            fill=self.fill
+        )
+
+    def _trans_transform(self, f: Translation) -> 'AxisAlignedRectangle':
+        dx, dy = f.vec.x, f.vec.y
+        return AxisAlignedRectangle(
+            self.bottom_left.translate(dx, dy),
+            self.top_right.translate(dx, dy),
+            stroke=self.stroke,
+            fill=self.fill
+        )
+
+
+class QuadraticBezierSpline(InferredTransformMixin, Spline[QuadraticBezierCurve], AffineInvariant['QuadraticBezierSpline']):
+    def __init__(
+            self,
+            points: PointSequenceI,
+            stroke: Stroke = Stroke(),
+            markers: 'MarkerConfig | None' = None,
+    ):
+        super().__init__(stroke, markers)
+        self.points = PointSequence.mk(points)
+        m, n = self.points.points.shape
+        self._num_segments = (m - 1) // 2
+        assert m >= 3 and m % 2 == 1
+
+    @property
+    def num_segments(self) -> int:
+        return self._num_segments
+
+    def knot(self, i: int) -> Point:
+        return self.points[2 * i]
+
+    def segment(self, i: int) -> QuadraticBezierCurve:
+        return QuadraticBezierCurve(self.points[2 * i], self.points[2 * i + 1], self.points[2 * i + 2])
+
+    def subspline(self, i: int, j: int) -> 'QuadraticBezierSpline':
+        return QuadraticBezierSpline(self.points[2 * i:2 * j + 1], stroke=self.stroke, markers=self.marker_config)
+
+    def aabb(self) -> 'AxisAlignedRectangle | None':
+        # TODO: vectorized version
+        return aabb_from_boxes(e.aabb() for e in self.segments)
 
     @classmethod
     def from_points(cls, points: Sequence[PointI], control_points: Sequence[PointI], **kwargs):
@@ -1544,18 +1635,100 @@ class QuadraticBezierPath(Parametric, ProjectiveInvariant['QuadraticBezierPath']
         arr: list[Point] = [Point.origin for _ in range(2 * len(points) - 1)]
         arr[::2] = [Point.mk(p) for p in points]
         arr[1::2] = [Point.mk(p) for p in control_points]
-        return cls(jnp.stack([p.loc for p in arr]), **kwargs)
+        return cls(PointSequence(jnp.stack([p.loc for p in arr])), **kwargs)
 
-    def proj_transform(self: 'QuadraticBezierPath', f: ProjectiveTransformation) -> 'QuadraticBezierPath':
-        return QuadraticBezierPath(f.apply_batch(PointSequence(self.mat)).points, stroke=self.stroke, markers=self.markers)
-
-
-class CubicBezierCurve(Parametric):
-    pass
+    def _aff_transform(self: 'QuadraticBezierSpline', f: AffineTransformation) -> 'QuadraticBezierSpline':
+        return QuadraticBezierSpline(f.apply_batch(self.points), stroke=self.stroke, markers=self.marker_config)
 
 
-class CubicBezierPath(Parametric):
-    pass
+class CubicBezierSpline(InferredTransformMixin, Spline[CubicBezierCurve], AffineInvariant['CubicBezierSpline']):
+    def __init__(self, points: PointSequenceI, stroke: Stroke = Stroke(), markers: 'MarkerConfig | None' = None):
+        super().__init__(stroke, markers)
+        self.points = PointSequence.mk(points)
+        m, n = self.points.points.shape
+        self._num_segments = (m - 1) // 3
+        assert m >= 4 and m % 3 == 1
+
+    @property
+    def num_segments(self) -> int:
+        return self._num_segments
+
+    def knot(self, i: int) -> Point:
+        return self.points[3 * i]
+
+    def segment(self, i: int) -> CubicBezierCurve:
+        return CubicBezierCurve(self.points[3 * i], self.points[3 * i + 1], self.points[3 * i + 2], self.points[3 * i + 3])
+
+    def subspline(self, i: int, j: int) -> 'CubicBezierSpline':
+        return CubicBezierSpline(self.points[3 * i:3 * j + 1], stroke=self.stroke, markers=self.marker_config)
+
+    def aabb(self) -> 'AxisAlignedRectangle | None':
+        return aabb_from_boxes(e.aabb() for e in self.segments)
+
+    def _aff_transform(self: 'CubicBezierSpline', f: AffineTransformation) -> 'CubicBezierSpline':
+        return CubicBezierSpline(f.apply_batch(self.points), stroke=self.stroke, markers=self.marker_config)
+
+
+class HermiteCurve(InferredTransformMixin, Parametric, AffineInvariant['HermiteCurve']):
+    basis_matrix = jnp.array([
+        [2, -2, 1, 1],
+        [-3, 3, -2, -1],
+        [0, 0, 1, 0],
+        [1, 0, 0, 0]
+    ])
+
+    def __init__(self, p0: PointI, p1: PointI, t0: VectorI, t1: VectorI, stroke: Stroke = Stroke()):
+        self.p0 = Point.mk(p0)
+        self.p1 = Point.mk(p1)
+        self.t0 = Vector.mk(t0)
+        self.t1 = Vector.mk(t1)
+        self._mat = jnp.stack([self.p0.loc, self.p1.loc, self.t0.vec, self.t1.vec])
+        self.stroke = stroke
+
+    def at(self, t: Scalar):
+        v = jnp.array([t * t * t, t * t, t, 1])
+        return Point(self._mat.T @ self.basis_matrix @ v)
+
+    def as_cubic_bezier_curve(self) -> CubicBezierCurve:
+        cp0 = self.p0 + self.t0 * (1/3)
+        cp1 = self.p1 - self.t1 * (1/3)
+        return CubicBezierCurve(self.p0, cp0, cp1, self.p1, stroke=self.stroke)
+
+    def _aff_transform(self: 'HermiteCurve', f: AffineTransformation) -> 'HermiteCurve':
+        fl = f.matrix[:2, :2]
+        return HermiteCurve(f(self.p0), f(self.p1), Vector(fl @ self.t0.vec), Vector(fl @ self.t1.vec), stroke=self.stroke)
+
+
+class HermiteSpline(InferredTransformMixin, Spline[HermiteCurve], AffineInvariant['HermiteSpline']):
+    def __init__(self, points: PointSequenceI, tangents: VectorSequenceI, stroke: Stroke = Stroke(), markers: 'MarkerConfig | None' = None):
+        super().__init__(stroke, markers)
+        self.points = PointSequence.mk(points)
+        self.tangents = VectorSequence.mk(tangents)
+        assert len(self.points) == len(self.tangents)
+
+    def knot(self, i: int) -> Point:
+        return self.points[i]
+
+    @property
+    def num_segments(self) -> int:
+        return len(self.points) - 1
+
+    def segment(self, i: int) -> HermiteCurve:
+        return HermiteCurve(self.points[i], self.points[i + 1], self.tangents[i], self.tangents[i + 1])
+
+    def subspline(self, i: int, j: int) -> 'HermiteSpline':
+        return HermiteSpline(self.points[i:j + 1], self.tangents[i:j + 1])
+
+    def as_cubic_bezier_spline(self) -> CubicBezierSpline:
+        cp0 = self.points.points[:-1] + self.tangents.vectors[:-1] * (1/3)
+        cp1 = self.points.points[1:] - self.tangents.vectors[1:] * (1/3)
+        points = jnp.zeros((len(self.points) * 3 - 2, 2))
+        points = points.at[::3, :].set(self.points.points).at[1::3, :].set(cp0).at[2::3, :].set(cp1)
+        return CubicBezierSpline(PointSequence.mk(points), stroke=self.stroke, markers=self.marker_config)
+
+    def _aff_transform(self: 'HermiteSpline', f: AffineTransformation) -> 'HermiteSpline':
+        fl = f.matrix[:2, :2]
+        return HermiteSpline(f.apply_batch(self.points), VectorSequence(self.tangents.vectors @ fl.T), stroke=self.stroke, markers=self.marker_config)
 
 
 class Canvas(Group):
@@ -1628,7 +1801,7 @@ def intersect_line_line(l0: Line, l1: Line) -> Point | Line | None:
     pp = jnp.cross(l0.coef, l1.coef)  # projective point
     if jnp.allclose(pp, 0, Global.approx_eps):  # coincident lines
         return l0
-    return ProjPoint(pp).to_point()
+    return ProjPoint(pp).to_point_safe()
 
 
 def intersect_segment_segment(s0: LineSegment, s1: LineSegment) -> Point | LineSegment | None:

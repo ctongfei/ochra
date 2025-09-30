@@ -9,11 +9,8 @@ packages = [{ include = "ochra", from = "src" }]
 requires-python = ">= 3.13"
 dependencies = [
     "jax>=0.7",
-    "jax-dataclasses>=1.6",
-    "jaxtyping>=0.3.2",
-    "multimethod>=2.0",
-    "plum-dispatch>=2.5.7",
-    "pycairo>=1.27.0",
+    "jaxtyping>=0.3",
+    "pycairo>=1.27",
 ]
 
 [dependency-groups]
@@ -24,7 +21,6 @@ dev = [
     "vega-datasets==0.9.0",
     "pytest==8.3.3",
     "hypothesis>=6.115.6",
-    "mypy>=1.13.0",
     "mkdocs-material>=9.3.1",
     "sphinx>=8.2.3",
     "mkdocstrings-python>=1.17.0",

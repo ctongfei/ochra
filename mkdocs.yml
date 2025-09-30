@@ -1,0 +1,62 @@
+site_name: 'Ochra'
+site_description: 'Declarative, composable, & stateless drawing'
+site_author: 'Tongfei Chen'
+copyright: 'Copyright &copy; 2025 Tongfei Chen'
+
+theme:
+  name: 'material'
+  palette:
+    primary: custom
+  font:
+    text: 'Inter'
+    code: 'Roboto Mono'
+  icon:
+    logo: material/brush
+  
+markdown_extensions:
+  - pymdownx.arithmatex:
+      generic: true
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+
+repo_name: 'ctongfei/ochra'
+repo_url: 'https://github.com/ctongfei/ochra'
+
+nav:
+  - 'Type design': 'oo.md'
+  - 'API Reference':
+      - 'ochra': 'api/core.md'
+      - 'ochra.functions': 'api/functions.md'
+      - 'ochra.geometry': 'api/geometry.md'
+      - 'ochra.util': 'api/util.md'
+
+watch:
+  - src
+
+plugins:
+- mkdocstrings:
+    default_handler: python
+    handlers:
+      python:
+        options:
+          docstring_style: sphinx
+          show_if_no_docstring: true
+          show_source: false
+          show_symbol_type_heading: true
+          show_signature: false
+          show_attribute_values: false
+          show_overloads: false
+        paths:
+          - src
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+

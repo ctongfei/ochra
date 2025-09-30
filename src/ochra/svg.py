@@ -1,7 +1,8 @@
 import xml.etree.ElementTree as ET
 from typing import Dict, ContextManager
 
-from ochra.functions import f2s, rad_to_deg
+from ochra.util import f2s
+from ochra.functions import rad_to_deg
 from ochra.core import *  # noqa: F403
 from ochra.style import *  # noqa: F403
 from ochra.mark import Marker, MarkerConfig, Mark
@@ -78,19 +79,6 @@ def affine_transformation_to_css(t: AffineTransformation) -> dict[str, str]:
         "transform": f"matrix({s})"
     }
 
-def projective_transformation_to_css(t: ProjectiveTransformation) -> dict[str, str]:
-    m = t.matrix / t.matrix[2, 2]
-    [a1, a2, a4, b1, b2, b4, d1, d2, d4] = m.flatten().tolist()  # z-axis non-existent
-    s = ' '.join(f2s(x) for x in [
-        a1, b1, 0, d1,
-        a2, b2, 0, d2,
-        0, 0, 1, 0,
-        a4, b4, 0, d4
-    ])
-    return {
-        "transform": f"matrix3d({s})"
-    }
-
 
 def element_to_svg(c: Canvas, e: Element) -> ET.Element:
     if isinstance(e, Group):
@@ -155,10 +143,10 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
     elif isinstance(e, Polyline):
         return ET.Element(
             "polyline",
-            points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.vertices),
+            points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.knots),
             fill="none",
             **stroke_to_css(e.stroke),
-            **marker_config_to_css(MarkerConfig(e.marker_start, e.marker_mid, e.marker_end)),
+            **marker_config_to_css(e.marker_config),
         )
     elif isinstance(e, Polygon):
         return ET.Element(
@@ -197,7 +185,6 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             return ET.Element("group")
         else:
             return element_to_svg(c, segment)
-        
     elif isinstance(e, QuadraticBezierCurve):
         return ET.Element(
             "path",
@@ -205,20 +192,43 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             fill="none",
             **stroke_to_css(e.stroke),
         )
-    elif isinstance(e, QuadraticBezierPath):
+    elif isinstance(e, QuadraticBezierSpline):
         parts = [
-            f"Q {f2s(e.mat[2*i+1, 0])} {f2s(e.mat[2*i+1, 1])}, {f2s(e.mat[2*i+2, 0])} {f2s(e.mat[2*i+2, 1])}"
+            f"Q {f2s(e.points[2*i+1].x)} {f2s(e.points[2*i+1].y)}, {f2s(e.points[2*i+2].x)} {f2s(e.points[2*i+2].y)}"
             for i in range(e.num_segments)
         ]
         return ET.Element(
             "path",
-            d=f"M {f2s(e.mat[0, 0])} {f2s(e.mat[0, 1])} {' '.join(parts)}",
+            d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
             fill="none",
             **stroke_to_css(e.stroke),
-            **marker_config_to_css(e.markers)
+            **marker_config_to_css(e.marker_config),
         )
+    elif isinstance(e, CubicBezierCurve):
+        return ET.Element(
+            "path",
+            d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} C {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}, {f2s(e.p3.x)} {f2s(e.p3.y)}",
+            fill="none",
+            **stroke_to_css(e.stroke),
+        )
+    elif isinstance(e, CubicBezierSpline):
+        parts = [
+            f"C {f2s(e.points[3*i+1].x)} {f2s(e.points[3*i+1].y)}, {f2s(e.points[3*i+2].x)} {f2s(e.points[3*i+2].y)}, {f2s(e.points[3*i+3].x)} {f2s(e.points[3*i+3].y)}"
+            for i in range(e.num_segments)
+        ]
+        return ET.Element(
+            "path",
+            d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
+            fill="none",
+            **stroke_to_css(e.stroke),
+            **marker_config_to_css(e.marker_config),
+        )
+    elif isinstance(e, HermiteCurve):
+        return element_to_svg(c, e.as_cubic_bezier_curve())
+    elif isinstance(e, HermiteSpline):
+        return element_to_svg(c, e.as_cubic_bezier_spline())
     elif isinstance(e, Parametric):
-        return element_to_svg(c, e.approx_as_polyline())
+        return element_to_svg(c, e.approx_as_hermite_spline())
     elif isinstance(e, Annotation):  # Materialize under the Ochra coordinate system
         return element_to_svg(c, e.scale(1, -1).materialize().scale(1, -1))
     else:

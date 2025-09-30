@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import jax_dataclasses as jdc
 from jaxtyping import Float
 
-from ochra.util import Global, classproperty
+from ochra.util import Global, classproperty, f2s
 if TYPE_CHECKING:
     from ochra.core import Line
 
@@ -191,6 +191,50 @@ class Point:
             return cls(jnp.array([float(x[0]), float(x[1])]))
 
 
+@jdc.pytree_dataclass
+class ProjPoint:
+    r"""Represents a 2D point in the projective plane $\mathbb{RP}^2$."""
+    loc: Float[jax.Array, "3"]
+
+    @property
+    def x(self) -> Scalar:
+        return self.loc[0]
+
+    @property
+    def y(self) -> Scalar:
+        return self.loc[1]
+
+    @property
+    def z(self) -> Scalar:
+        return self.loc[2]
+
+    def to_point_safe(self) -> Point | None:  # None if infinity point
+        """Converts the projective point to an affine point. Returns `None` if the point is an infinity point."""
+        if self.is_infinity_point():
+            return None
+        return self.to_point()
+
+    def to_point(self) -> Point:
+        return Point(self.loc[:2] / self.z)
+
+    def is_infinity_point(self):
+        """Returns True if the point is an infinity point."""
+        max_component = jnp.max(jnp.abs(self.loc))
+        w = self.loc[2] / max_component
+        return jnp.isclose(w, 0.0, atol=Global.approx_eps)
+
+    def __str__(self):
+        return f"({self.x} : {self.y} : {self.z})"
+
+    def __eq__(self, other):
+        for i in range(3):
+            if other.loc[i] != 0:
+                t = self.loc[i] / other.loc[i]
+                if jnp.allclose(self.loc, t * other.loc, atol=Global.approx_eps):
+                    return True
+        return False
+
+
 type PointI = Point | tuple[float, float] | Float[jax.Array, "2"]
 type VectorI = Vector | tuple[Scalar, Scalar] | Float[jax.Array, "2"]
 
@@ -199,6 +243,42 @@ type LineI = tuple[float, float, float] | Float[jax.Array, "3"]
 
 type ConicI = tuple[float, float, float, float, float, float] | Float[jax.Array, "3 3"]
 # a x^2 + b x y + c y^2 + d x + e y + f = 0
+
+
+@jdc.pytree_dataclass
+class VectorSequence(Sequence[Vector]):
+    """
+    Represents a sequence of vectors in the plane as a `jax.Array`.
+    This enables vectorized operations on the vectors.
+    """
+    vectors: Float[jax.Array, "n 2"]
+
+    @overload
+    def __getitem__(self, index: int) -> Vector: ...
+    @overload
+    def __getitem__(self, index: slice) -> 'VectorSequence': ...
+
+    def __getitem__(self, index: int | slice) -> 'Vector | VectorSequence':
+        if isinstance(index, slice):
+            return VectorSequence(self.vectors[index, :])
+        return Vector(self.vectors[index, :])
+
+    def __len__(self) -> int:
+        return self.vectors.shape[0]
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield Vector(self.vectors[i, :])
+
+    @classmethod
+    def mk(cls, vectors: 'Sequence[VectorI] | jax.Array | VectorSequence'):
+        if isinstance(vectors, VectorSequence):
+            return vectors
+        elif isinstance(vectors, jax.Array):
+            assert vectors.shape[1] == 2
+            return cls(vectors)
+        vecs = [Vector.mk(v).vec for v in vectors]
+        return cls(jnp.stack(vecs))
 
 
 @jdc.pytree_dataclass
@@ -230,63 +310,18 @@ class PointSequence(Sequence[Point]):
         return f.apply_batch(self)
 
     @classmethod
-    def mk(cls, points: 'Sequence[PointI] | PointSequence'):
+    def mk(cls, points: 'Sequence[PointI] | jax.Array | PointSequence'):
         if isinstance(points, PointSequence):
             return points
+        elif isinstance(points, jax.Array):
+            assert points.shape[1] == 2
+            return cls(points)
         vecs = [Point.mk(p).loc for p in points]
         return cls(jnp.stack(vecs))
 
 
+type VectorSequenceI = Sequence[VectorI] | VectorSequence
 type PointSequenceI = Sequence[PointI] | PointSequence
-
-
-@jdc.pytree_dataclass
-class ProjPoint:
-    r"""Represents a 2D point in the projective plane $\mathbb{RP}^2$."""
-    loc: Float[jax.Array, "3"]
-
-    def __post_init__(self):
-        max_comp = jnp.max(jnp.abs(self.loc))
-        if max_comp <= Global.approx_eps:
-            raise ValueError("Invalid projective point.")
-
-    @property
-    def x(self) -> Scalar:
-        return self.loc[0]
-
-    @property
-    def y(self) -> Scalar:
-        return self.loc[1]
-
-    @property
-    def z(self) -> Scalar:
-        return self.loc[2]
-
-    def to_point(self) -> Point | None:  # None if infinity point
-        """Converts the projective point to an affine point. Returns `None` if the point is an infinity point."""
-        if self.is_infinity_point():
-            return None
-        return Point(self.loc[:2] / self.z)
-
-    def to_point_unsafe(self) -> Point:
-        return Point(self.loc[:2] / self.z)
-
-    def is_infinity_point(self):
-        """Returns True if the point is an infinity point."""
-        max_component = jnp.max(jnp.abs(self.loc))
-        w = self.loc[2] / max_component
-        return jnp.isclose(w, 0.0, atol=Global.approx_eps)
-
-    def __str__(self):
-        return f"({self.x} : {self.y} : {self.z})"
-
-    def __eq__(self, other):
-        for i in range(3):
-            if other.loc[i] != 0:
-                t = self.loc[i] / other.loc[i]
-                if jnp.allclose(self.loc, t * other.loc, atol=Global.approx_eps):
-                    return True
-        return False
 
 
 @jdc.pytree_dataclass
@@ -342,13 +377,13 @@ class ProjectiveTransformation:
             p = p.to_proj_point()
         pp = ProjPoint(jnp.dot(self.matrix, p.loc))
         if not projective:
-            return pp.to_point()
+            return pp.to_point_safe()
         else:
             return pp
 
     def unsafe_apply(self, p: Point) -> Point:
         pp = ProjPoint(jnp.dot(self.matrix, p.to_proj_point().loc))
-        return pp.to_point_unsafe()
+        return pp.to_point()
 
     @overload
     def apply_batch(self, ps: PointSequence) -> PointSequence: ...
@@ -399,9 +434,7 @@ class AffineTransformation(ProjectiveTransformation):
             p = p.to_proj_point()
         pp = ProjPoint(jnp.dot(self.matrix, p.loc))
         if not projective:
-            new_p = pp.to_point()
-            assert new_p is not None  # affine transformations do not transform to infinity
-            return new_p
+            return pp.to_point()
         else:
             return pp
 
@@ -458,9 +491,8 @@ class RigidTransformation(AffineTransformation):
             return AffineTransformation(self.matrix @ other.matrix)
         return ProjectiveTransformation(self.matrix @ other.matrix)
 
-    def decompose(self) -> tuple['Translation', 'Rotation']:
+    def decompose_rigid(self) -> tuple['Translation', 'Rotation']:
         return Translation(self.matrix[:2, 2]), Rotation(jnp.arctan2(self.matrix[1, 0], self.matrix[0, 0]))
-
 
 
 class Translation(RigidTransformation):

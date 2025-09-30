@@ -9,22 +9,13 @@ if TYPE_CHECKING:
     from ochra.core import AxisAlignedRectangle
 
 
-def f2s(x: Any) -> str:
-    if isinstance(x, jax.Array):
-        return f2s(x.item())
-    if isinstance(x, float):
-        return f"{x:.4f}".rstrip("0").rstrip(".")
-    else:
-        return str(x)
-
-
 def ui2r(x: Scalar) -> Scalar:
-    r"""A continuous function that maps $[0, 1] \to (-\infty, +\infty)$."""
+    r"""A continuous monotonic function that maps $[0, 1] \to (-\infty, +\infty)$."""
     return jnp.tan((x - 0.5) * τ / 2)
 
 
 def ui2pr(x: Scalar) -> Scalar:
-    r"""A continuous function that maps $[0, 1] \to (0, +\infty)$."""
+    r"""A continuous monotonic function that maps $[0, 1] \to (0, +\infty)$."""
     return jnp.tan(x * τ / 2)
 
 
@@ -60,7 +51,7 @@ def turn_to_rad(turn: float) -> float:
 def solve_linear(a: Scalar, b: Scalar) -> list[Scalar]:
     """
     Solves the linear equation $ax + b = 0$.
-    :return: a list of solutions, which can contain 0 or 1 elements.
+    :return: a list of solutions, which may contain 0 or 1 elements.
     """
     if jnp.allclose(a, 0, atol=Global.approx_eps):
         return []
@@ -70,7 +61,7 @@ def solve_linear(a: Scalar, b: Scalar) -> list[Scalar]:
 def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
     """
     Solves the quadratic equation $ax^2 + bx + c = 0$.
-    :return: a list of solutions, which can contain 0, 1, or 2 elements.
+    :return: a list of solutions, which may contain 0, 1, or 2 elements.
     """
     if jnp.allclose(a, 0, atol=Global.approx_eps):
         return solve_linear(b, c)
@@ -84,7 +75,7 @@ def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
         return [(-b - sqrt_d) / (2 * a), (-b + sqrt_d) / (2 * a)]
 
 
-def aligned_bbox_from_points(ps: PointSequenceI) -> 'AxisAlignedRectangle':
+def aabb_from_points(ps: PointSequenceI) -> 'AxisAlignedRectangle':
     """Computes the smallest axis-aligned bounding box that contains all the given points."""
     from ochra.core import AxisAlignedRectangle
     ps = PointSequence.mk(ps)
@@ -95,11 +86,11 @@ def aligned_bbox_from_points(ps: PointSequenceI) -> 'AxisAlignedRectangle':
     return AxisAlignedRectangle((l, b), (r, u))
 
 @overload
-def aligned_bbox_from_bboxes(bboxes: 'Iterable[AxisAlignedRectangle]') -> 'AxisAlignedRectangle': ...
+def aabb_from_boxes(bboxes: 'Iterable[AxisAlignedRectangle]') -> 'AxisAlignedRectangle': ...
 @overload
-def aligned_bbox_from_bboxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') -> 'AxisAlignedRectangle | None': ...
+def aabb_from_boxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') -> 'AxisAlignedRectangle | None': ...
 
-def aligned_bbox_from_bboxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') -> 'AxisAlignedRectangle | None':
+def aabb_from_boxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') -> 'AxisAlignedRectangle | None':
     """Computes the smallest axis-aligned bounding box that contains all the given bounding boxes."""
     from ochra.core import AxisAlignedRectangle
     if any(bbox is None for bbox in bboxes):
@@ -107,7 +98,7 @@ def aligned_bbox_from_bboxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') ->
     lbs = [bbox.bottom_left.loc for bbox in bboxes]
     rus = [bbox.top_right.loc for bbox in bboxes]
     if len(lbs) == 0 or len(rus) == 0:
-        return AxisAlignedRectangle((0, 0), (0, 0))
+        return None
     l, b = jnp.min(jnp.stack(lbs), axis=0)
     r, u = jnp.max(jnp.stack(rus), axis=0)
     return AxisAlignedRectangle((l, b), (r, u))
