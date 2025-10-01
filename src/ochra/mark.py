@@ -20,17 +20,17 @@ class MarkerUnits(Enum):
 
 
 class Marker:
+    all_named_markers: dict[str, "Marker"] = {}
+    all_named_symbols: dict[str, "Marker"] = {}
 
-    all_named_markers: dict[str, 'Marker'] = {}
-    all_named_symbols: dict[str, 'Marker'] = {}
-
-    def __init__(self,
-                 elements: Collection[Element],
-                 viewport: "AxisAlignedRectangle",
-                 units: MarkerUnits = MarkerUnits.user_space_on_use,
-                 orientation: MarkerOrientation | float = MarkerOrientation.auto,
-                 name: Optional[str] = None
-                 ):
+    def __init__(
+        self,
+        elements: Collection[Element],
+        viewport: "AxisAlignedRectangle",
+        units: MarkerUnits = MarkerUnits.user_space_on_use,
+        orientation: MarkerOrientation | float = MarkerOrientation.auto,
+        name: Optional[str] = None,
+    ):
         self.elements = elements
         self.viewport = viewport
         self.units = units
@@ -45,9 +45,9 @@ class Marker:
     def bullet(cls, size: float = 2, **kwargs):
         if "fill" not in kwargs:
             if "stroke" in kwargs:
-                kwargs['fill'] = Fill(color=kwargs['stroke'].color)
+                kwargs["fill"] = Fill(color=kwargs["stroke"].color)
             else:
-                kwargs['fill'] = Fill(color=Color(0, 0, 0))
+                kwargs["fill"] = Fill(color=Color(0, 0, 0))
         return cls(
             [Circle(radius=size / 2, **kwargs)],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)),
@@ -63,10 +63,7 @@ class Marker:
     @classmethod
     def asterisk(cls, n: int, size: float = 4, angle: float = τ / 4, **kwargs):
         return cls(
-            [
-                LineSegment((0, 0), (Vector.unit(angle + τ * i / n) * (size / 2)).to_point(), **kwargs)
-                for i in range(n)
-            ],
+            [LineSegment((0, 0), (Vector.unit(angle + τ * i / n) * (size / 2)).to_point(), **kwargs) for i in range(n)],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 
@@ -93,11 +90,11 @@ class Marker:
         )
 
     @classmethod
-    def register_as_symbol(cls, m: 'Marker'):
+    def register_as_symbol(cls, m: "Marker"):
         Marker.all_named_symbols[f"symbol-{m.name}"] = m
 
     @classmethod
-    def register_as_marker(cls, m: 'Marker'):
+    def register_as_marker(cls, m: "Marker"):
         Marker.all_named_markers[m.name] = m
 
 
@@ -109,15 +106,14 @@ class MarkerConfig:
 
 
 class Mark(Element):  # TODO: should probably be Annotation
-
     def __init__(self, point: PointI, marker: Marker):
         self.point = Point.mk(point)
         self.marker = marker
         Marker.register_as_symbol(marker)
 
-    def aabb(self) -> 'Optional[AxisAlignedRectangle]':
+    def aabb(self) -> "Optional[AxisAlignedRectangle]":
         return Group(self.marker.elements).aabb().translate(self.point.x, self.point.y)
 
-    def transform(self, f: AffineTransformation) -> 'Element':
+    def transform(self, f: AffineTransformation) -> "Element":
         # Only transforms the location of the marker, not the marker itself
         return Mark(f(self.point), marker=self.marker)

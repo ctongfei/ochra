@@ -1,4 +1,3 @@
-
 import ochra as ox
 
 canvas = ox.Canvas(

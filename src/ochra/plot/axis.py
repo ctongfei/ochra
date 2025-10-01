@@ -8,14 +8,14 @@ from ochra.plot.collections import X
 
 
 class Axis(ABC, Generic[X]):
-
-    def __init__(self,
-                 label: str,
-                 bounds: tuple[X, X],
-                 locate_fn: Callable[[X], float],
-                 major_ticks: Sequence[X],
-                 minor_ticks: Sequence[X],
-                 ):
+    def __init__(
+        self,
+        label: str,
+        bounds: tuple[X, X],
+        locate_fn: Callable[[X], float],
+        major_ticks: Sequence[X],
+        minor_ticks: Sequence[X],
+    ):
         self.label = label
         self.bounds = bounds
         self.locate_fn = locate_fn
@@ -24,7 +24,7 @@ class Axis(ABC, Generic[X]):
 
     @property
     @abstractmethod
-    def kind(self) -> Literal['continuous', 'discrete']:
+    def kind(self) -> Literal["continuous", "discrete"]:
         pass
 
     @property
@@ -52,14 +52,14 @@ class Axis(ABC, Generic[X]):
 
 
 class ContinuousAxis(Axis[float]):
-
-    def __init__(self,
-                 label: str,
-                 bounds: tuple[float, float],
-                 locate_fn: Callable[[float], float] = lambda x: x,
-                 major_ticks: Sequence[float] = None,
-                 minor_ticks: Sequence[float] = None,
-                 ):
+    def __init__(
+        self,
+        label: str,
+        bounds: tuple[float, float],
+        locate_fn: Callable[[float], float] = lambda x: x,
+        major_ticks: Sequence[float] = None,
+        minor_ticks: Sequence[float] = None,
+    ):
         super().__init__(label, bounds, locate_fn, major_ticks, minor_ticks)
 
         if self.major_ticks is None:
@@ -69,15 +69,16 @@ class ContinuousAxis(Axis[float]):
         return self.bounds[0] <= x <= self.bounds[1]
 
     @property
-    def kind(self) -> Literal['continuous', 'discrete']:
-        return 'continuous'
+    def kind(self) -> Literal["continuous", "discrete"]:
+        return "continuous"
 
 
 class DiscreteAxis(Axis[X]):
-    def __init__(self,
-                 label: str,
-                 categories: Sequence[X],
-                 ):
+    def __init__(
+        self,
+        label: str,
+        categories: Sequence[X],
+    ):
         self.categories = categories
         self.locate_dict = {category: i for i, category in enumerate(self.categories)}
         super().__init__(
@@ -98,8 +99,8 @@ class DiscreteAxis(Axis[X]):
         return x in self.locate_dict
 
     @property
-    def kind(self) -> Literal['continuous', 'discrete']:
-        return 'discrete'
+    def kind(self) -> Literal["continuous", "discrete"]:
+        return "discrete"
 
 
 # Date/time axis

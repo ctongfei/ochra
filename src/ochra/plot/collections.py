@@ -30,9 +30,5 @@ def standardize_1d(data: Mapping1D) -> Mapping[Xd, object]:
 def standardize_2d(data: Mapping2D) -> Mapping[tuple[Xd, Yd], object]:
     if isinstance(data, np.ndarray):
         assert data.ndim == 2, "Data must be 2D"
-        return {
-            (x, y): data[x, y]
-            for x in range(data.shape[0])
-            for y in range(data.shape[1])
-        }
+        return {(x, y): data[x, y] for x in range(data.shape[0]) for y in range(data.shape[1])}
     return data

@@ -75,9 +75,10 @@ def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
         return [(-b - sqrt_d) / (2 * a), (-b + sqrt_d) / (2 * a)]
 
 
-def aabb_from_points(ps: PointSequenceI) -> 'AxisAlignedRectangle':
+def aabb_from_points(ps: PointSequenceI) -> "AxisAlignedRectangle":
     """Computes the smallest axis-aligned bounding box that contains all the given points."""
     from ochra.core import AxisAlignedRectangle
+
     ps = PointSequence.mk(ps)
     if len(ps) == 0:
         return AxisAlignedRectangle((0, 0), (0, 0))
@@ -85,14 +86,17 @@ def aabb_from_points(ps: PointSequenceI) -> 'AxisAlignedRectangle':
     r, u = jnp.max(ps.points, axis=0)
     return AxisAlignedRectangle((l, b), (r, u))
 
-@overload
-def aabb_from_boxes(bboxes: 'Iterable[AxisAlignedRectangle]') -> 'AxisAlignedRectangle': ...
-@overload
-def aabb_from_boxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') -> 'AxisAlignedRectangle | None': ...
 
-def aabb_from_boxes(bboxes: 'Iterable[AxisAlignedRectangle | None]') -> 'AxisAlignedRectangle | None':
+@overload
+def aabb_from_boxes(bboxes: "Iterable[AxisAlignedRectangle]") -> "AxisAlignedRectangle": ...
+@overload
+def aabb_from_boxes(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None": ...
+
+
+def aabb_from_boxes(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None":
     """Computes the smallest axis-aligned bounding box that contains all the given bounding boxes."""
     from ochra.core import AxisAlignedRectangle
+
     if any(bbox is None for bbox in bboxes):
         return None
     lbs = [bbox.bottom_left.loc for bbox in bboxes]

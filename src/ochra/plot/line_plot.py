@@ -9,17 +9,18 @@ from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
 
 
-
 class LinePlot(Plot[float, float]):
     """
     Represents a line plot.
     """
-    def __init__(self,
-                 name: str,
-                 data: Collection[Tuple[float, float, ...]],
-                 stroke: Stroke = Stroke(),
-                 marker: Optional[Marker] = None,
-                 ):
+
+    def __init__(
+        self,
+        name: str,
+        data: Collection[Tuple[float, float, ...]],
+        stroke: Stroke = Stroke(),
+        marker: Optional[Marker] = None,
+    ):
         self.name = name
         self.data = data
         self.stroke = stroke
@@ -27,18 +28,11 @@ class LinePlot(Plot[float, float]):
 
     def draw(self, x_axis: Axis[float], y_axis: Axis[float]) -> Element:
         points = sorted(
-            [
-                Point.mk((x_axis.locate(x), y_axis.locate(y)))
-                for x, y, *_ in self.data
-                if x in x_axis and y in y_axis
-            ],
-            key=lambda p: p.x
+            [Point.mk((x_axis.locate(x), y_axis.locate(y))) for x, y, *_ in self.data if x in x_axis and y in y_axis],
+            key=lambda p: p.x,
         )
         if self.marker is not None:
-            marks = [
-                Mark(p, self.marker)
-                for p in points
-            ]
+            marks = [Mark(p, self.marker) for p in points]
         else:
             marks = []
         return Group(
@@ -47,7 +41,7 @@ class LinePlot(Plot[float, float]):
                     points,
                     stroke=self.stroke,
                 ),
-                *marks
+                *marks,
             ]
         )
 

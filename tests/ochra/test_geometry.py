@@ -13,17 +13,16 @@ def test_proj_point():
     assert ProjPoint(jnp.array((1, 2, 0))) == ProjPoint(jnp.array((2, 4, 0)))
     assert ProjPoint(jnp.array((1, 2, 0))) != ProjPoint(jnp.array((1, 2, 1)))
 
+
 def nonsingular(m: np.ndarray):
     if np.isnan(m).any() or np.isinf(m).any():
         return False
     d = np.linalg.det(m)
     return not jnp.isclose(d, 0.0, atol=Global.approx_eps) and not np.isinf(d) and not np.isnan(d)
 
+
 @given(
-    m=lists(
-        floats(-10.0, 10.0, allow_nan=False, allow_infinity=False, width=32),
-        min_size=9, max_size=9
-    ),
+    m=lists(floats(-10.0, 10.0, allow_nan=False, allow_infinity=False, width=32), min_size=9, max_size=9),
 )
 @settings(deadline=None)
 def test_affine_transformation_decomposition(m):

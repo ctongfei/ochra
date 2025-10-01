@@ -10,7 +10,6 @@ from ochra.text import Text
 
 
 class Session(ContextManager):
-
     def __init__(self):
         pass
 
@@ -74,10 +73,8 @@ def affine_transformation_to_css(t: AffineTransformation) -> dict[str, str]:
     """
     m = t.matrix / t.matrix[2, 2]
     [a, c, tx, b, d, ty] = m[:2, :].flatten().tolist()
-    s = ' '.join(f2s(x) for x in [a, b, c, d, tx, ty])
-    return {
-        "transform": f"matrix({s})"
-    }
+    s = " ".join(f2s(x) for x in [a, b, c, d, tx, ty])
+    return {"transform": f"matrix({s})"}
 
 
 def element_to_svg(c: Canvas, e: Element) -> ET.Element:
@@ -105,8 +102,8 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
                 c,
                 AnyAffinelyTransformed(
                     Text(e.text, e.bottom_left, angle=0.0, font=e.font),
-                    Rotation.centered(-e.angle, flip(e.bottom_left))
-                )
+                    Rotation.centered(-e.angle, flip(e.bottom_left)),
+                ),
             )
         else:
             t = ET.Element(
@@ -129,7 +126,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         if segment is None:
             return ET.Element("group")
         else:
-            return element_to_svg(c,segment)
+            return element_to_svg(c, segment)
     elif isinstance(e, LineSegment):
         return ET.Element(
             "line",
@@ -166,9 +163,11 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             **fill_to_css(e.fill),
         )
     elif isinstance(e, Ellipse):
-        rot = {
-            "transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"
-        } if e.angle != 0 else {}
+        rot = (
+            {"transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"}
+            if e.angle != 0
+            else {}
+        )
         return ET.Element(
             "ellipse",
             cx=f2s(e.center.x),
@@ -194,7 +193,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         )
     elif isinstance(e, QuadraticBezierSpline):
         parts = [
-            f"Q {f2s(e.points[2*i+1].x)} {f2s(e.points[2*i+1].y)}, {f2s(e.points[2*i+2].x)} {f2s(e.points[2*i+2].y)}"
+            f"Q {f2s(e.points[2 * i + 1].x)} {f2s(e.points[2 * i + 1].y)}, {f2s(e.points[2 * i + 2].x)} {f2s(e.points[2 * i + 2].y)}"
             for i in range(e.num_segments)
         ]
         return ET.Element(
@@ -213,7 +212,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         )
     elif isinstance(e, CubicBezierSpline):
         parts = [
-            f"C {f2s(e.points[3*i+1].x)} {f2s(e.points[3*i+1].y)}, {f2s(e.points[3*i+2].x)} {f2s(e.points[3*i+2].y)}, {f2s(e.points[3*i+3].x)} {f2s(e.points[3*i+3].y)}"
+            f"C {f2s(e.points[3 * i + 1].x)} {f2s(e.points[3 * i + 1].y)}, {f2s(e.points[3 * i + 2].x)} {f2s(e.points[3 * i + 2].y)}, {f2s(e.points[3 * i + 3].x)} {f2s(e.points[3 * i + 3].y)}"
             for i in range(e.num_segments)
         ]
         return ET.Element(
@@ -255,16 +254,11 @@ def marker_to_svg_def(c: Canvas, m: Marker) -> ET.Element:
 def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
     v = m.viewport
     symbol = ET.Element(
-        "symbol",
-        id=f"symbol-{m.name}",
-        viewBox=f"0 0 {v.width} {v.height}",
-        width=str(v.width),
-        height=str(v.height)
+        "symbol", id=f"symbol-{m.name}", viewBox=f"0 0 {v.width} {v.height}", width=str(v.width), height=str(v.height)
     )
-    symbol.extend([
-        element_to_svg(c, e.scale(1, -1).translate(-v.bottom_left.x, -v.bottom_left.y))
-        for e in m.elements
-    ])  # Conform to SVG 1.1 standard, can't use refX, refY -- so have to move the elements
+    symbol.extend(
+        [element_to_svg(c, e.scale(1, -1).translate(-v.bottom_left.x, -v.bottom_left.y)) for e in m.elements]
+    )  # Conform to SVG 1.1 standard, can't use refX, refY -- so have to move the elements
     return symbol
 
 
@@ -274,20 +268,14 @@ def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float =
         element_to_svg(c, e.scale(1, -1))  # to SVG coordinate system
         for e in c.elements
     ]
-    all_markers = [
-        marker_to_svg_def(c, m)
-        for m in Marker.all_named_markers.values()
-    ]
-    all_symbols = [
-        marker_to_svg_symbol(c, m)
-        for m in Marker.all_named_symbols.values()
-    ]
+    all_markers = [marker_to_svg_def(c, m) for m in Marker.all_named_markers.values()]
+    all_symbols = [marker_to_svg_symbol(c, m) for m in Marker.all_named_symbols.values()]
     root = ET.Element(
         "svg",
         xmlns="http://www.w3.org/2000/svg",
         width=str(c.viewport.width + 2 * hp),
         height=str(c.viewport.height + 2 * vp),
-        viewBox=f"{c.viewport.bottom_left.x - hp} {-c.viewport.bottom_left.y - c.viewport.height - vp} {c.viewport.width + 2 * hp} {c.viewport.height + 2 * vp}"
+        viewBox=f"{c.viewport.bottom_left.x - hp} {-c.viewport.bottom_left.y - c.viewport.height - vp} {c.viewport.width + 2 * hp} {c.viewport.height + 2 * vp}",
     )
     defs = ET.Element("defs")
     defs.extend(all_markers)

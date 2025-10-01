@@ -9,14 +9,14 @@ from ochra.plot.collections import X, Y
 
 
 class BarPlot(Plot[X, Y]):
-
-    def __init__(self,
-                 name: str,
-                 data: Collection[Tuple[X, Y, ...]],
-                 stroke: Stroke = Stroke(),
-                 bar_width: float = 1.0,  # TODO: better name
-                 fill: Fill = Fill(),
-                 ):
+    def __init__(
+        self,
+        name: str,
+        data: Collection[Tuple[X, Y, ...]],
+        stroke: Stroke = Stroke(),
+        bar_width: float = 1.0,  # TODO: better name
+        fill: Fill = Fill(),
+    ):
         self.name = name
         self.data = data
         self.stroke = stroke
@@ -29,10 +29,7 @@ class BarPlot(Plot[X, Y]):
         def bar(t: tuple[X, Y, ...]) -> Element:
             x, y = x_axis.locate(t[0]), y_axis.locate(t[1])
             return AxisAlignedRectangle(
-                (x - self.bar_width / 2, 0),
-                (x + self.bar_width / 2, y),
-                stroke=self.stroke,
-                fill=self.fill
+                (x - self.bar_width / 2, 0), (x + self.bar_width / 2, y), stroke=self.stroke, fill=self.fill
             )
 
         return Group([bar(t) for t in self.data])

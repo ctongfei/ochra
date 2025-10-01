@@ -14,22 +14,24 @@ ell2 = ell.transform(ox.Rotation(deg_to_rad(30)))
 
 canvas = ox.Canvas(
     [
-        ox.Group([
-            ell,
-            ox.Mark((0, 0), plus),
-            ox.Mark(f0, plus),
-            ox.Mark(f1, plus),
-            ox.Mark(ell.focus0, cross),
-            ox.Mark(ell.focus1, cross),
-            ell.circumscribed_rectangle(),
-            ox.LineSegment(ell.vertex0, ell.vertex1),
-            ox.LineSegment(ell.covertex0, ell.covertex1),
-            ell.directrix0(),
-            ell.directrix1(),
-            ell.trace_quadratic_bezier_path(step=32, num_steps=16, markers=ox.mark.MarkerConfig(mid=plus))
-        ]),
+        ox.Group(
+            [
+                ell,
+                ox.Mark((0, 0), plus),
+                ox.Mark(f0, plus),
+                ox.Mark(f1, plus),
+                ox.Mark(ell.focus0, cross),
+                ox.Mark(ell.focus1, cross),
+                ell.circumscribed_rectangle(),
+                ox.LineSegment(ell.vertex0, ell.vertex1),
+                ox.LineSegment(ell.covertex0, ell.covertex1),
+                ell.directrix0(),
+                ell.directrix1(),
+                ell.trace_quadratic_bezier_path(step=32, num_steps=16, markers=ox.mark.MarkerConfig(mid=plus)),
+            ]
+        ),
     ],
-    viewport=ox.AxisAlignedRectangle((-200, -200), (200, 200))
+    viewport=ox.AxisAlignedRectangle((-200, -200), (200, 200)),
 )
 
 save_svg(canvas, "test.svg")

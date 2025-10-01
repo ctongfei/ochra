@@ -12,12 +12,11 @@ plot = oxp.Chart(
     x_axis=oxp.DiscreteAxis("x", range(16)),
     y_axis=oxp.DiscreteAxis("y", range(16)),
     plots=[
-        #oxp.HeatMap(data, colormap=Colormap.viridis, palette=nord)
+        # oxp.HeatMap(data, colormap=Colormap.viridis, palette=nord)
     ],
-    palette=nord
+    palette=nord,
 )
 
 c = ox.Canvas(elements=[plot.draw()])
 
 ox.svg.save_svg(c, "test.svg")
-

@@ -30,7 +30,7 @@ html_basic: Palette = Palette(
         ".lime",
         ".blue",
         ".navy",
-    ]
+    ],
 )
 
 

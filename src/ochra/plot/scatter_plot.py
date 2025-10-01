@@ -11,11 +11,12 @@ from ochra.plot.collections import X, Y
 
 
 class ScatterPlot(Plot[float, float]):
-    def __init__(self,
-                 name: str,
-                 data: Collection[Tuple[float, float]],
-                 marker: Marker,
-                 ):
+    def __init__(
+        self,
+        name: str,
+        data: Collection[Tuple[float, float]],
+        marker: Marker,
+    ):
         self.name = name
         self.data = data
         self.marker = marker
@@ -24,7 +25,8 @@ class ScatterPlot(Plot[float, float]):
         return Group(
             elements=[
                 Mark(Point(x_axis.locate(x[0]), y_axis.locate(x[1])), self.marker)
-                for x in self.data if x[0] in x_axis and x[1] in y_axis
+                for x in self.data
+                if x[0] in x_axis and x[1] in y_axis
             ]
         )
 
@@ -32,4 +34,3 @@ class ScatterPlot(Plot[float, float]):
         mark = Mark((0, 0), self.marker)
         text = Text(self.name, (0, 0), font=font)
         return [(mark, text)]
-

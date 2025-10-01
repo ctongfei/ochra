@@ -10,8 +10,7 @@ cars = data.cars()
 names = ["USA", "Europe", "Japan"]
 # filter cars where origin is USA then select only the columns Horsepower and Miles_per_Gallon
 series = [
-    list(cars[cars.Origin == origin][["Horsepower", "Miles_per_Gallon"]].itertuples(index=False))
-    for origin in names
+    list(cars[cars.Origin == origin][["Horsepower", "Miles_per_Gallon"]].itertuples(index=False)) for origin in names
 ]
 
 nord = Palette.nord
@@ -30,7 +29,7 @@ plot = oxp.Chart(
         oxp.ScatterPlot(name, data, marker=marker)
         for name, data, color, marker in zip(names, series, nord.colors, markers)
     ],
-    palette=nord
+    palette=nord,
 )
 
 c = ox.Canvas([plot.draw()])

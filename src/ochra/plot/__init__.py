@@ -9,15 +9,15 @@ from .stack_plot import StackPlot
 from .heatmap import HeatMap
 
 __all__ = [
-    'Axis',
-    'ContinuousAxis',
-    'DiscreteAxis',
-    'BarPlot',
-    'Chart',
-    'LinePlot',
-    'Plot',
-    'ScatterPlot',
-    'Histogram',
-    'StackPlot',
-    'HeatMap'
+    "Axis",
+    "ContinuousAxis",
+    "DiscreteAxis",
+    "BarPlot",
+    "Chart",
+    "LinePlot",
+    "Plot",
+    "ScatterPlot",
+    "Histogram",
+    "StackPlot",
+    "HeatMap",
 ]

@@ -6,8 +6,7 @@ import cairo
 
 from ochra.util import classproperty
 from ochra.functions import lerp
-from ochra._matplotlib_colormaps import _viridis_data, _magma_data, _inferno_data, \
-    _plasma_data
+from ochra._matplotlib_colormaps import _viridis_data, _magma_data, _inferno_data, _plasma_data
 
 
 @dataclass
@@ -15,6 +14,7 @@ class Color:
     """
     A color in RGBA space. Each component is in the range [0, 1].
     """
+
     r: float
     g: float
     b: float
@@ -33,32 +33,25 @@ class Color:
         return self.r, self.g, self.b, self.a
 
     @classmethod
-    def from_hex(cls, hex: str, alpha: float = 1.0) -> 'Color':
+    def from_hex(cls, hex: str, alpha: float = 1.0) -> "Color":
         hex = hex.lstrip("#")
-        return cls(
-            r=int(hex[0:2], 16) / 255,
-            g=int(hex[2:4], 16) / 255,
-            b=int(hex[4:6], 16) / 255,
-            a=alpha
-        )
+        return cls(r=int(hex[0:2], 16) / 255, g=int(hex[2:4], 16) / 255, b=int(hex[4:6], 16) / 255, a=alpha)
 
     @classmethod
-    def from_rgb(cls, red: float, green: float, blue: float,
-                 alpha: float = 1.0) -> 'Color':
+    def from_rgb(cls, red: float, green: float, blue: float, alpha: float = 1.0) -> "Color":
         return cls(red, green, blue, alpha)
 
     @classmethod
-    def from_rgb_int(cls, red: int, green: int, blue: int, alpha: int = 255) -> 'Color':
+    def from_rgb_int(cls, red: int, green: int, blue: int, alpha: int = 255) -> "Color":
         return cls(red / 255, green / 255, blue / 255, alpha / 255)
-    
+
     @classmethod
     def from_hsl(cls):
-    # TODO: hsl and hsla
+        # TODO: hsl and hsla
         pass
 
 
 class Colormap:
-
     def __call__(self, t: float) -> Color:
         raise NotImplementedError
 
@@ -80,7 +73,6 @@ class Colormap:
 
 
 class InterpolatedColormap(Colormap):
-
     def __init__(self, data: list[Color]):
         self.data = data
 
@@ -92,12 +84,7 @@ class InterpolatedColormap(Colormap):
             a = self.data[i]
             b = self.data[i + 1]
             _, s = divmod(t * (len(self.data) - 1), 1.0)
-            return Color(
-                r=lerp(a.r, b.r, s),
-                g=lerp(a.g, b.g, s),
-                b=lerp(a.b, b.b, s),
-                a=lerp(a.a, b.a, s)
-            )
+            return Color(r=lerp(a.r, b.r, s), g=lerp(a.g, b.g, s), b=lerp(a.b, b.b, s), a=lerp(a.a, b.a, s))
 
     @classmethod
     def _from_matplotlib_data(cls, data: list[tuple[float, float, float]]) -> Colormap:
@@ -157,8 +144,7 @@ class FillRule(Enum):
 
 @dataclass
 class Fill:
-    color: Optional[Color] = field(
-        default_factory=lambda: Color(0, 0, 0, 0))  # transparent
+    color: Optional[Color] = field(default_factory=lambda: Color(0, 0, 0, 0))  # transparent
     opacity: Optional[float] = None
     rule: Optional[FillRule] = None
 
@@ -220,12 +206,10 @@ class Font:
         self.extents = _font_extents(self)
 
     def scale(self, s: float):
-        return Font(self.family, self.size * s, self.size_adjust, self.stretch,
-                    self.style, self.variant, self.weight)
+        return Font(self.family, self.size * s, self.size_adjust, self.stretch, self.style, self.variant, self.weight)
 
     def bolded(self):
-        return Font(self.family, self.size, self.size_adjust, self.stretch, self.style,
-                    self.variant, FontWeight.bold())
+        return Font(self.family, self.size, self.size_adjust, self.stretch, self.style, self.variant, FontWeight.bold())
 
 
 def _style_to_cairo(style: Optional[FontStyle]):
@@ -248,30 +232,21 @@ def _weight_to_cairo(weight: Optional[FontWeight]):
 def _text_extents(text: str, font: Font) -> TextExtents:
     ctx = cairo.Context(cairo.ImageSurface(cairo.FORMAT_ARGB32, 0, 0))
     # TODO: toy font face. Use PyGObject/Pango for real font handling.
-    ctx.select_font_face(
-        font.family,
-        _style_to_cairo(font.style),
-        _weight_to_cairo(font.weight)
-    )
+    ctx.select_font_face(font.family, _style_to_cairo(font.style), _weight_to_cairo(font.weight))
     ctx.set_font_size(font.size)
     return TextExtents(*ctx.text_extents(text))
 
 
 def _font_extents(font: Font) -> FontExtents:
     ctx = cairo.Context(cairo.ImageSurface(cairo.FORMAT_ARGB32, 0, 0))
-    ctx.select_font_face(
-        font.family,
-        _style_to_cairo(font.style),
-        _weight_to_cairo(font.weight)
-    )
+    ctx.select_font_face(font.family, _style_to_cairo(font.style), _weight_to_cairo(font.weight))
     ctx.set_font_size(font.size)
     x_height = ctx.text_extents("x").height
     return FontExtents(x_height, *ctx.font_extents())
 
 
 def _traverse_palette(
-        prefix: str,
-        d: Union[Sequence[Union[str, 'Palette']], Mapping[str, Color]]
+    prefix: str, d: Union[Sequence[Union[str, "Palette"]], Mapping[str, Color]]
 ) -> Iterator[Tuple[str, Color]]:
     if isinstance(d, Mapping):
         for key, value in d.items():
@@ -286,18 +261,17 @@ def _traverse_palette(
 
 class Palette:
     def __init__(
-            self,
-            name: str,
-            colors: Union[Sequence[Union[Color, 'Palette']], Mapping[str, Color]],
-            default_light: str | None = None,
-            default_dark: str | None = None,
-            default_gray: str | None = None,
-            color_wheel: Sequence[str] | None = None
+        self,
+        name: str,
+        colors: Union[Sequence[Union[Color, "Palette"]], Mapping[str, Color]],
+        default_light: str | None = None,
+        default_dark: str | None = None,
+        default_gray: str | None = None,
+        color_wheel: Sequence[str] | None = None,
     ):
         self.colors = colors
         self.name = name
-        self.colors_dict = {name: color for name, color in
-                            _traverse_palette("", colors)}
+        self.colors_dict = {name: color for name, color in _traverse_palette("", colors)}
         self.colors_list = [color for name, color in _traverse_palette("", colors)]
         self.default_light = default_light
         self.default_dark = default_dark
@@ -332,7 +306,4 @@ class Palette:
 
     def default_color_sequence(self, n: int) -> Sequence[Color]:
         assert n <= len(self.color_wheel)
-        return [
-            self.colors_dict[self.color_wheel[int(i / n * len(self.color_wheel))]]
-            for i in range(n)
-        ]
+        return [self.colors_dict[self.color_wheel[int(i / n * len(self.color_wheel))]] for i in range(n)]

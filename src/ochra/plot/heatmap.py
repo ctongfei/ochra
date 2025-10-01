@@ -8,12 +8,14 @@ class HeatMap(Plot[X, Y]):
     """
     Represents a heatmap.
     """
-    def __init__(self,
-                 data: Mapping2D,
-                 colormap: Colormap = InterpolatedColormap.viridis,
-                 border_stroke: Stroke | None = None,
-                 palette: Palette | None = None
-                 ):
+
+    def __init__(
+        self,
+        data: Mapping2D,
+        colormap: Colormap = InterpolatedColormap.viridis,
+        border_stroke: Stroke | None = None,
+        palette: Palette | None = None,
+    ):
         self.data = standardize_2d(data)
         self.colormap = colormap
         self.border_stroke = border_stroke if border_stroke is not None else Stroke(color=palette.default_gray_color)
@@ -28,7 +30,7 @@ class HeatMap(Plot[X, Y]):
                     (x_axis.locate(x) - 0.5, y_axis.locate(y) - 0.5),
                     (x_axis.locate(x) + 0.5, y_axis.locate(y) + 0.5),
                     fill=Fill(color=self.colormap(normalize(self.data[x, y]))),
-                    stroke=self.border_stroke
+                    stroke=self.border_stroke,
                 )
                 for x, y in self.data.keys()
             ]

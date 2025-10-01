@@ -8,12 +8,13 @@ from ochra.style import Fill, Stroke, Palette
 
 
 class StackPlot(Plot[float, float]):
-    def __init__(self,
-                 data: Collection[Tuple[float, Sequence[float], ...]],
-                 fills: Optional[Sequence[Fill]] = None,
-                 stroke: Optional[Stroke] = None,
-                 palette: Optional[Palette] = None
-                 ):
+    def __init__(
+        self,
+        data: Collection[Tuple[float, Sequence[float], ...]],
+        fills: Optional[Sequence[Fill]] = None,
+        stroke: Optional[Stroke] = None,
+        palette: Optional[Palette] = None,
+    ):
         self.data = data
         self.stroke = stroke
         self.fills = fills
@@ -29,32 +30,18 @@ class StackPlot(Plot[float, float]):
         n = len(self.data)
         x = [t[0] for t in self.data]
         ys = np.array([t[1] for t in self.data])  # R[DataPoint, Stack]
-        stacked = np.concatenate(
-            [
-                np.zeros((ys.shape[0], 1)),
-                np.cumsum(ys, axis=1)
-            ],
-            axis=1
-        )  # R[DataPoint, Stack + 1]
+        stacked = np.concatenate([np.zeros((ys.shape[0], 1)), np.cumsum(ys, axis=1)], axis=1)  # R[DataPoint, Stack + 1]
 
         polygons = [
             Polygon(
-                vertices=[
-                    (x_axis.locate(x[i]), y_axis.locate(stacked[i, j].item()))
-                    for i in range(n)
-                ] + [
-                    (x_axis.locate(x[i]), y_axis.locate(stacked[i, j + 1].item()))
-                    for i in range(n - 1, -1, -1)
-                ],
+                vertices=[(x_axis.locate(x[i]), y_axis.locate(stacked[i, j].item())) for i in range(n)]
+                + [(x_axis.locate(x[i]), y_axis.locate(stacked[i, j + 1].item())) for i in range(n - 1, -1, -1)],
                 stroke=self.stroke,
-                fill=self.fills[j]
+                fill=self.fills[j],
             )
             for j in range(m)
         ]
         return Group(elements=polygons)
 
     def legend(self, size: float) -> Element:
-        return Group([
-            AxisAlignedRectangle(
-                (0.25 * size, 0.25 * size), (0.75 * size, 0.75 * size), fill=self.fills[i])
-        ])
+        return Group([AxisAlignedRectangle((0.25 * size, 0.25 * size), (0.75 * size, 0.75 * size), fill=self.fills[i])])

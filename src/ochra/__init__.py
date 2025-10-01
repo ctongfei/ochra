@@ -97,5 +97,5 @@ __all__ = [
     "Font",
     "Text",
     "Table",
-    "svg"
+    "svg",
 ]

@@ -9,13 +9,14 @@ from ochra.plot.collections import Xc, Yc
 
 
 class Histogram(Plot[Xc, Yc]):
-    def __init__(self,
-                 name: str,
-                 data: Collection[float],
-                 ticks: Sequence[float] | None = None,
-                 stroke: Stroke = Stroke(),
-                 fill: Fill = Fill(),
-                 ):
+    def __init__(
+        self,
+        name: str,
+        data: Collection[float],
+        ticks: Sequence[float] | None = None,
+        stroke: Stroke = Stroke(),
+        fill: Fill = Fill(),
+    ):
         self.name = name
         self.data = data
         self.ticks = ticks
@@ -28,10 +29,7 @@ class Histogram(Plot[Xc, Yc]):
         return Group(
             elements=[
                 AxisAlignedRectangle(
-                    (x_axis.locate(l), 0),
-                    (x_axis.locate(r), y_axis.locate(count)),
-                    stroke=self.stroke,
-                    fill=self.fill
+                    (x_axis.locate(l), 0), (x_axis.locate(r), y_axis.locate(count)), stroke=self.stroke, fill=self.fill
                 )
                 for l, r, count in hist
             ]

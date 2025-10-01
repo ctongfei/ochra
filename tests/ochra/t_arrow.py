@@ -17,20 +17,21 @@ arrow_ends = [
 ]
 
 arrows = [
-    ox.LineSegment(
-        (5 + 25 * i, 10), (5 + 25 * i, 100),
-        stroke=replace(stroke, color=ios[i]),
-        marker_end=arrow_end
-    )
+    ox.LineSegment((5 + 25 * i, 10), (5 + 25 * i, 100), stroke=replace(stroke, color=ios[i]), marker_end=arrow_end)
     for i, arrow_end in enumerate(arrow_ends)
 ]
 
 rect = ox.AxisAlignedRectangle((0, 0), (400, 400), fill=oxs.Fill(ios.lightgray4))
 r = ox.Rectangle((50, 50), (200, 200), angle=deg_to_rad(70), fill=oxs.Fill(ios[0]))
 
-text = ox.Text.right_centered("Abc", (100, 100), angle=math.tau/6, font=oxs.Font(size=20))
-bbox0 = ox.Text("Abc", ox.Point.origin, angle=math.tau/6, font=oxs.Font(size=20)).rotated_visual_bbox
-text1 = ox.Text("Abc", text.rotated_visual_bbox.right_center - bbox0.right_center.to_vector(), angle=math.tau / 6, font=oxs.Font(size=20))
+text = ox.Text.right_centered("Abc", (100, 100), angle=math.tau / 6, font=oxs.Font(size=20))
+bbox0 = ox.Text("Abc", ox.Point.origin, angle=math.tau / 6, font=oxs.Font(size=20)).rotated_visual_bbox
+text1 = ox.Text(
+    "Abc",
+    text.rotated_visual_bbox.right_center - bbox0.right_center.to_vector(),
+    angle=math.tau / 6,
+    font=oxs.Font(size=20),
+)
 
 canvas = ox.Canvas(
     viewport=rect,
@@ -42,7 +43,7 @@ canvas = ox.Canvas(
         bbox0,
         text1,
         ox.Circle(2, (100, 100), fill=oxs.Fill(ios.blue)),
-    ]
+    ],
 )
 #    def right_centered(cls, text.py: str, right_center: PointI, angle: float = 0.0, font: Font = Font()) -> 'Text':
 #        right_center = Point.mk(right_center)
