@@ -190,7 +190,7 @@ class Chart(Generic[X, Y]):
             AxisOrientation.Y_SECONDARY: lambda t: t.materialize().width,
         }
         text_size = max(
-            get_size[ori](t) for tick in major_ticks for t in tick.recursive_children() if isinstance(t, Annotation)
+            get_size[ori](t) for tick in major_ticks for t in tick.descendants() if isinstance(t, Annotation)
         )
         minor_tick_marker = Marker.tick(self.minor_tick_length, tick_angle[ori], stroke=self.tick_stroke)
         minor_ticks = (

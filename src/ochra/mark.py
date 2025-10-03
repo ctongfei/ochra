@@ -4,8 +4,8 @@ from enum import Enum
 from typing import Optional
 from dataclasses import dataclass
 
-from ochra.core import Group, Element, Canvas, Circle, LineSegment, AxisAlignedRectangle, Polygon
-from ochra.style import Fill, Color
+from ochra.core import Group, Element, Canvas, Circle, LineSegment, AxisAlignedRectangle, Polygon, Annotation
+from ochra.style import Fill, Color, Style
 from ochra.geometry import Point, PointI, AffineTransformation, Vector, τ
 
 
@@ -99,21 +99,26 @@ class Marker:
 
 
 @dataclass
-class MarkerConfig:
+class MarkerConfig(Style):
     start: Optional[Marker] = None
     mid: Optional[Marker] = None
     end: Optional[Marker] = None
 
+    def __post_init__(self):
+        if self.start is not None:
+            Marker.register_as_marker(self.start)
+        if self.mid is not None:
+            Marker.register_as_marker(self.mid)
+        if self.end is not None:
+            Marker.register_as_marker(self.end)
 
-class Mark(Element):  # TODO: should probably be Annotation
+
+class Mark(Annotation):
+    """
+    Represents a marker at a specific point.
+    """
     def __init__(self, point: PointI, marker: Marker):
         self.point = Point.mk(point)
         self.marker = marker
         Marker.register_as_symbol(marker)
-
-    def aabb(self) -> "Optional[AxisAlignedRectangle]":
-        return Group(self.marker.elements).aabb().translate(self.point.x, self.point.y)
-
-    def transform(self, f: AffineTransformation) -> "Element":
-        # Only transforms the location of the marker, not the marker itself
-        return Mark(f(self.point), marker=self.marker)
+        super().__init__(point, lambda p: Group(self.marker.elements).translate(p.x, p.y))

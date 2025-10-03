@@ -88,15 +88,15 @@ def aabb_from_points(ps: PointSequenceI) -> "AxisAlignedRectangle":
 
 
 @overload
-def aabb_from_boxes(bboxes: "Iterable[AxisAlignedRectangle]") -> "AxisAlignedRectangle": ...
+def box_union(bboxes: "Iterable[AxisAlignedRectangle]") -> "AxisAlignedRectangle": ...
 @overload
-def aabb_from_boxes(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None": ...
+def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None": ...
 
 
-def aabb_from_boxes(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None":
+def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None":
     """Computes the smallest axis-aligned bounding box that contains all the given bounding boxes."""
     from ochra.core import AxisAlignedRectangle
-
+    bboxes = list(bboxes)
     if any(bbox is None for bbox in bboxes):
         return None
     lbs = [bbox.bottom_left.loc for bbox in bboxes]

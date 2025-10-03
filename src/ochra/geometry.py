@@ -1,7 +1,7 @@
 """
 Defines the geometric primitives used in Ochra.
 """
-
+from __future__ import annotations
 import math
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, overload
@@ -49,19 +49,19 @@ class Vector:
         """Returns the angle of the vector with the positive x-axis."""
         return jnp.arctan2(self.y, self.x)
 
-    def __add__(self, v: "Vector") -> "Vector":
+    def __add__(self, v: Vector) -> Vector:
         """Returns the vector sum."""
         return Vector(self.vec + v.vec)
 
-    def __sub__(self, v: "Vector") -> "Vector":
+    def __sub__(self, v: Vector) -> Vector:
         """Returns the vector difference."""
         return Vector(self.vec - v.vec)
 
-    def __mul__(self, s: Scalar) -> "Vector":
+    def __mul__(self, s: Scalar) -> Vector:
         """Returns the vector scaled by a scalar."""
         return Vector(self.vec * s)
 
-    def __neg__(self) -> "Vector":
+    def __neg__(self) -> Vector:
         """Returns the vector with the opposite direction."""
         return Vector(-self.vec)
 
@@ -69,7 +69,7 @@ class Vector:
         """Returns the norm of the vector."""
         return jnp.linalg.norm(self.vec)
 
-    def dot(self, v: "Vector") -> Scalar:
+    def dot(self, v: Vector) -> Scalar:
         """Returns the dot product of this vector and another vector."""
         return jnp.dot(self.vec, v.vec)
 
@@ -77,21 +77,21 @@ class Vector:
         """Returns the norm of the vector."""
         return abs(self)
 
-    def normalize(self) -> "Vector":
+    def normalize(self) -> Vector:
         """Returns the unit vector of length 1 in the same direction as this vector."""
         return Vector(self.vec / abs(self))
 
-    def rotate(self, θ: Scalar) -> "Vector":
+    def rotate(self, θ: Scalar) -> Vector:
         """Returns the vector rotated by an angle."""
         rot = jnp.array([[math.cos(θ), -math.sin(θ)], [math.sin(θ), math.cos(θ)]])
         return Vector(jnp.dot(rot, self.vec))
 
-    def to_point(self) -> "Point":
+    def to_point(self) -> Point:
         """Converts the vector to a point."""
         return Point(self.vec)
 
     @classmethod
-    def mk(cls, x: "VectorI | Scalar", y: Scalar | None = None) -> "Vector":
+    def mk(cls, x: VectorI | Scalar, y: Scalar | None = None) -> Vector:
         """
         Creates a vector from a tuple, a list, a :py:class:`jax.Array` or another vector.
         This should be preferred over the constructor for readability.
@@ -128,16 +128,16 @@ class Point:
     def y(self) -> Scalar:
         return self.loc[1]
 
-    def __add__(self, v: Vector) -> "Point":
+    def __add__(self, v: Vector) -> Point:
         return Point(self.loc + v.vec)
 
     @overload
-    def __sub__(self, p: "Point") -> Vector: ...
+    def __sub__(self, p: Point) -> Vector: ...
 
     @overload
-    def __sub__(self, p: Vector) -> "Point": ...
+    def __sub__(self, p: Vector) -> Point: ...
 
-    def __sub__(self, p: "Point | Vector") -> "Point | Vector":
+    def __sub__(self, p: Point | Vector) -> Point | Vector:
         if isinstance(p, Point):
             return Vector(self.loc - p.loc)
         else:
@@ -146,16 +146,16 @@ class Point:
     def __eq__(self, other):
         return jnp.allclose(self.loc, other.loc, atol=Global.approx_eps).item()
 
-    def scale(self, sx: Scalar, sy: Scalar) -> "Point":
+    def scale(self, sx: Scalar, sy: Scalar) -> Point:
         return Point(self.loc * jnp.array([sx, sy]))
 
-    def translate(self, dx: Scalar, dy: Scalar) -> "Point":
+    def translate(self, dx: Scalar, dy: Scalar) -> Point:
         return self + Vector.mk((dx, dy))
 
     def to_vector(self) -> Vector:
         return Vector(self.loc)
 
-    def to_proj_point(self) -> "ProjPoint":
+    def to_proj_point(self) -> ProjPoint:
         return ProjPoint(jnp.concat([self.loc, jnp.array([1])]))
 
     def __str__(self):
@@ -165,7 +165,7 @@ class Point:
         return self.__str__()
 
     @classproperty
-    def origin(cls) -> "Point":
+    def origin(cls) -> Point:
         """Returns the origin point $(0, 0)$."""
         return cls(jnp.array([0.0, 0.0]))  # type: ignore
 
@@ -175,7 +175,7 @@ class Point:
         return cls(jnp.array([r * jnp.cos(θ), r * jnp.sin(θ)]))
 
     @classmethod
-    def mk(cls, x: "PointI | Scalar", y: Scalar | None = None) -> "Point":
+    def mk(cls, x: PointI | Scalar, y: Scalar | None = None) -> Point:
         """
         Creates a point from a tuple, a list, a `jax.Array` or another point.
         This should be preferred over the constructor for readability.
@@ -260,9 +260,9 @@ class VectorSequence(Sequence[Vector]):
     @overload
     def __getitem__(self, index: int) -> Vector: ...
     @overload
-    def __getitem__(self, index: slice) -> "VectorSequence": ...
+    def __getitem__(self, index: slice) -> VectorSequence: ...
 
-    def __getitem__(self, index: int | slice) -> "Vector | VectorSequence":
+    def __getitem__(self, index: int | slice) -> Vector | VectorSequence:
         if isinstance(index, slice):
             return VectorSequence(self.vectors[index, :])
         return Vector(self.vectors[index, :])
@@ -275,7 +275,7 @@ class VectorSequence(Sequence[Vector]):
             yield Vector(self.vectors[i, :])
 
     @classmethod
-    def mk(cls, vectors: "Sequence[VectorI] | jax.Array | VectorSequence"):
+    def mk(cls, vectors: Sequence[VectorI] | jax.Array | VectorSequence):
         if isinstance(vectors, VectorSequence):
             return vectors
         elif isinstance(vectors, jax.Array):
@@ -297,9 +297,9 @@ class PointSequence(Sequence[Point]):
     @overload
     def __getitem__(self, index: int) -> Point: ...
     @overload
-    def __getitem__(self, index: slice) -> "PointSequence": ...
+    def __getitem__(self, index: slice) -> PointSequence: ...
 
-    def __getitem__(self, index: int | slice) -> "Point | PointSequence":
+    def __getitem__(self, index: int | slice) -> Point | PointSequence:
         if isinstance(index, slice):
             return PointSequence(self.points[index, :])
         return Point(self.points[index, :])
@@ -311,14 +311,14 @@ class PointSequence(Sequence[Point]):
         for i in range(len(self)):
             yield Point(self.points[i, :])
 
-    def to_proj(self) -> "ProjPointSequence":
+    def to_proj(self) -> ProjPointSequence:
         return ProjPointSequence(jnp.concat([self.points, jnp.ones((len(self), 1))], axis=1))
 
-    def transform(self, f: "ProjectiveTransformation") -> "PointSequence":
+    def transform(self, f: ProjectiveTransformation) -> PointSequence:
         return f.apply_batch(self)
 
     @classmethod
-    def mk(cls, points: "Sequence[PointI] | jax.Array | PointSequence"):
+    def mk(cls, points: Sequence[PointI] | jax.Array | PointSequence):
         if isinstance(points, PointSequence):
             return points
         elif isinstance(points, jax.Array):
@@ -344,9 +344,9 @@ class ProjPointSequence(Sequence[ProjPoint]):
     @overload
     def __getitem__(self, index: int) -> ProjPoint: ...
     @overload
-    def __getitem__(self, index: slice) -> "ProjPointSequence": ...
+    def __getitem__(self, index: slice) -> ProjPointSequence: ...
 
-    def __getitem__(self, index: int | slice) -> "ProjPoint | ProjPointSequence":
+    def __getitem__(self, index: int | slice) -> ProjPoint | ProjPointSequence:
         if isinstance(index, slice):
             return ProjPointSequence(self.points[index, :])
         return ProjPoint(self.points[index, :])
@@ -361,7 +361,7 @@ class ProjPointSequence(Sequence[ProjPoint]):
     def to_affine(self) -> PointSequence:
         return PointSequence(self.points[:, :2] / self.points[:, 2][:, None])
 
-    def transform(self, f: "ProjectiveTransformation") -> "ProjPointSequence":
+    def transform(self, f: ProjectiveTransformation) -> ProjPointSequence:
         return f.apply_batch(self)
 
 
@@ -376,7 +376,7 @@ class ProjectiveTransformation:
         assert not jnp.allclose(jnp.linalg.det(matrix), 0.0, atol=Global.approx_eps)  # nonsingular
         self.matrix = matrix
 
-    def __matmul__(self, other: "ProjectiveTransformation") -> "ProjectiveTransformation":
+    def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation:
         return ProjectiveTransformation(self.matrix @ other.matrix)
 
     @overload
@@ -415,7 +415,7 @@ class ProjectiveTransformation:
         else:
             return ProjPointSequence(transformed)
 
-    def inverse(self) -> "ProjectiveTransformation":
+    def inverse(self) -> ProjectiveTransformation:
         inverse = jnp.linalg.inv(self.matrix)
         return ProjectiveTransformation(inverse)
 
@@ -453,11 +453,11 @@ class AffineTransformation(ProjectiveTransformation):
             return pp
 
     @overload
-    def __matmul__(self, other: "AffineTransformation") -> "AffineTransformation": ...
+    def __matmul__(self, other: AffineTransformation) -> AffineTransformation: ...
     @overload
-    def __matmul__(self, other: "ProjectiveTransformation") -> "ProjectiveTransformation": ...
+    def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation: ...
 
-    def __matmul__(self, other: "ProjectiveTransformation") -> "ProjectiveTransformation":
+    def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation:
         if isinstance(other, AffineTransformation):
             return AffineTransformation(self.matrix @ other.matrix)
         return ProjectiveTransformation(self.matrix @ other.matrix)
@@ -494,7 +494,7 @@ class AffineTransformation(ProjectiveTransformation):
 
 class RigidTransformation(AffineTransformation):
     @overload
-    def __matmul__[Tr: ("RigidTransformation", AffineTransformation, RigidTransformation)](self, other: Tr) -> Tr: ...
+    def __matmul__[Tr: (RigidTransformation, AffineTransformation, RigidTransformation)](self, other: Tr) -> Tr: ...
     @overload
     def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation: ...
 

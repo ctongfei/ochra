@@ -49,7 +49,7 @@ def arrow_stealth(size: float = 5.0, angle: float = math.degrees(30), **kwargs):
     return Marker(
         [
             Polygon(
-                [triangle.knots[0], triangle.knots[1], Point.mk(-size, 0), triangle.knots[2]],
+                [triangle.vertices[0], triangle.vertices[1], Point.mk(-size, 0), triangle.vertices[2]],
                 stroke=stroke,
                 fill=fill,
                 **kwargs,
@@ -65,6 +65,6 @@ def arrow_line(size: float = 5.0, angle: float = math.degrees(30), **kwargs):
     stroke.line_join = LineJoin.miter
     stroke.miter_limit = math.ceil(1.0 / math.sin(angle / 2))
     return Marker(
-        [Polyline([triangle.knots[1], triangle.knots[0], triangle.knots[2]], stroke=stroke, **kwargs)],
+        [Polyline([triangle.vertices[1], triangle.vertices[0], triangle.vertices[2]], stroke=stroke, **kwargs)],
         viewport=AxisAlignedRectangle((-size, -size), (size, size)).scale(2, 2),
     )

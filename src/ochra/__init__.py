@@ -40,7 +40,7 @@ from .core import (
     Canvas,
     EmbeddedCanvas,
 )
-from .mark import Mark, Marker, MarkerOrientation, MarkerUnits
+from .mark import Mark, Marker, MarkerOrientation, MarkerUnits, MarkerConfig
 from .style import Color, Stroke, Fill, Font
 from .text import Text
 from .table import Table
@@ -91,6 +91,7 @@ __all__ = [
     "Marker",
     "MarkerOrientation",
     "MarkerUnits",
+    "MarkerConfig",
     "Color",
     "Stroke",
     "Fill",

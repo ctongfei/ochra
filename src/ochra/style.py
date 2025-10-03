@@ -1,12 +1,15 @@
+import dataclasses
+from abc import ABC, abstractmethod
+from copy import deepcopy
 from collections.abc import Sequence, Mapping, Iterator
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Tuple, Optional, Union
+from typing import Tuple, Optional, Union, Self
 import cairo
 
 from ochra.util import classproperty
 from ochra.functions import lerp
-from ochra._matplotlib_colormaps import _viridis_data, _magma_data, _inferno_data, _plasma_data
+from ochra.resource._matplotlib_colormaps import _viridis_data, _magma_data, _inferno_data, _plasma_data
 
 
 @dataclass
@@ -119,8 +122,21 @@ class Dash:
     offset: float | None = None
 
 
+class Style(ABC):
+    pass
+
+
+def merge_style[T: Style](a: T, b: T) -> T:
+    b_dict = {
+        f.name: getattr(b, f.name)
+        for f in dataclasses.fields(b)
+        if getattr(b, f.name) is not None
+    }
+    return dataclasses.replace(a, **b_dict)
+
+
 @dataclass
-class Stroke:
+class Stroke(Style):
     color: Optional[Color] = field(default_factory=lambda: Color(0, 0, 0, 1))  # black
     dash: Optional[Dash] = None
     line_cap: Optional[LineCap] = None
@@ -143,7 +159,7 @@ class FillRule(Enum):
 
 
 @dataclass
-class Fill:
+class Fill(Style):
     color: Optional[Color] = field(default_factory=lambda: Color(0, 0, 0, 0))  # transparent
     opacity: Optional[float] = None
     rule: Optional[FillRule] = None

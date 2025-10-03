@@ -1,3 +1,4 @@
+import dataclasses
 from collections.abc import Sequence, Callable
 from typing import Any, Self, overload
 

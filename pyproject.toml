@@ -10,13 +10,14 @@ requires-python = ">= 3.13"
 dependencies = [
     "jax>=0.7",
     "jaxtyping>=0.3",
+    "jax-dataclasses>=1.6",
     "pycairo>=1.27",
 ]
 
 [dependency-groups]
 dev = [
     "ruff>=0.13.0",
-    "pyright>=1.1.400",
+    "pyright>=1.1.405",
     "pip>=25.1",
     "vega-datasets==0.9.0",
     "pytest==8.3.3",
@@ -38,6 +39,9 @@ ignore = [
     "F722",  # In jaxtyping, a shape annotation is a string in a type parameter position
     "F821",  # In jaxtyping, a shape annotation is a string in a type parameter position
 ]
+
+[tool.pyright]
+pythonVersion = "3.12"
 
 [tool.pytest.ini_options]
 pythonpath = "src"

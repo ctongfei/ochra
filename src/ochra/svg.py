@@ -134,24 +134,24 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             y1=f2s(e.p0.y),
             x2=f2s(e.p1.x),
             y2=f2s(e.p1.y),
-            **stroke_to_css(e.stroke),
-            **marker_config_to_css(MarkerConfig(e.marker_start, None, e.marker_end)),
+            **stroke_to_css(e.get_style(Stroke)),
+            **marker_config_to_css(e.get_style(MarkerConfig)),
         )
     elif isinstance(e, Polyline):
         return ET.Element(
             "polyline",
             points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.knots),
             fill="none",
-            **stroke_to_css(e.stroke),
-            **marker_config_to_css(e.marker_config),
+            **stroke_to_css(e.get_style(Stroke)),
+            **marker_config_to_css(e.get_style(MarkerConfig)),
         )
     elif isinstance(e, Polygon):
         return ET.Element(
             "polygon",
             points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.vertices),
-            **stroke_to_css(e.stroke),
-            **fill_to_css(e.fill),
-            **marker_config_to_css(MarkerConfig(None, e.marker, None)),
+            **stroke_to_css(e.get_style(Stroke)),
+            **fill_to_css(e.get_style(Fill)),
+            **marker_config_to_css(e.get_style(MarkerConfig)),
         )
     elif isinstance(e, Circle):
         return ET.Element(
@@ -159,8 +159,8 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             cx=f2s(e.center.x),
             cy=f2s(e.center.y),
             r=f2s(e.radius),
-            **stroke_to_css(e.stroke),
-            **fill_to_css(e.fill),
+            **stroke_to_css(e.get_style(Stroke)),
+            **fill_to_css(e.get_style(Fill)),
         )
     elif isinstance(e, Ellipse):
         rot = (
@@ -175,8 +175,8 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             rx=f2s(e.a),
             ry=f2s(e.b),
             **rot,
-            **stroke_to_css(e.stroke),
-            **fill_to_css(e.fill),
+            **stroke_to_css(e.get_style(Stroke)),
+            **fill_to_css(e.get_style(Fill)),
         )
     elif isinstance(e, Parabola):
         segment = clip_parabola_aabb(e, c.viewport)
@@ -189,7 +189,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             "path",
             d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} Q {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}",
             fill="none",
-            **stroke_to_css(e.stroke),
+            **stroke_to_css(e.get_style(Stroke)),
         )
     elif isinstance(e, QuadraticBezierSpline):
         parts = [
@@ -200,15 +200,15 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             "path",
             d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
             fill="none",
-            **stroke_to_css(e.stroke),
-            **marker_config_to_css(e.marker_config),
+            **stroke_to_css(e.get_style(Stroke)),
+            **marker_config_to_css(e.get_style(MarkerConfig)),
         )
     elif isinstance(e, CubicBezierCurve):
         return ET.Element(
             "path",
             d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} C {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}, {f2s(e.p3.x)} {f2s(e.p3.y)}",
             fill="none",
-            **stroke_to_css(e.stroke),
+            **stroke_to_css(e.get_style(Stroke)),
         )
     elif isinstance(e, CubicBezierSpline):
         parts = [
@@ -219,8 +219,8 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
             "path",
             d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
             fill="none",
-            **stroke_to_css(e.stroke),
-            **marker_config_to_css(e.marker_config),
+            **stroke_to_css(e.get_style(Stroke)),
+            **marker_config_to_css(e.get_style(MarkerConfig)),
         )
     elif isinstance(e, HermiteCurve):
         return element_to_svg(c, e.as_cubic_bezier_curve())
