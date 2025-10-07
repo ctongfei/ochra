@@ -1,13 +1,13 @@
 import itertools
-import math
+import copy
 from enum import Enum
 from functools import partial
 from typing import Collection, Generic, Tuple, Optional
 
-from ochra.core import Element, Group, AxisAlignedRectangle, LineSegment
+from ochra.core import Element, Group, AxisAlignedRectangle, LineSegment, Annotation
 from ochra.mark import Marker
 from ochra.mark import Mark
-from ochra.geometry import Point, Vector, Translation, Scaling
+from ochra.geometry import τ, Point, Vector, Translation, Scaling
 from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
 from ochra.plot.collections import X, Y
@@ -16,7 +16,7 @@ from ochra.style import Font
 from ochra.style import Stroke
 from ochra.table import Table
 from ochra import Text
-from ochra.functions import f2s
+from ochra.util import f2s
 
 
 class AxisOrientation(Enum):
@@ -68,8 +68,8 @@ class Chart(Generic[X, Y]):
         X = x_axis
         Y = y_axis
         Y2 = secondary_y_axis
-        rect_bg = AxisAlignedRectangle((0, 0), (self.x_size, self.y_size), fill=self.background)
-        border = AxisAlignedRectangle((0, 0), (self.x_size, self.y_size), stroke=self.border_stroke)
+        rect_bg = AxisAlignedRectangle((0, 0), (self.x_size, self.y_size), styles=[self.background])
+        border = AxisAlignedRectangle((0, 0), (self.x_size, self.y_size), styles=[self.border_stroke])
         x_axis = self._draw_axis(self.x_axis, AxisOrientation.X_PRIMARY)
         y_axis = self._draw_axis(self.y_axis, AxisOrientation.Y_PRIMARY)
         if Y2 is not None:
@@ -134,7 +134,7 @@ class Chart(Generic[X, Y]):
                 AxisOrientation.X_SECONDARY: pxy,
                 AxisOrientation.Y_SECONDARY: pxy,
             }[ori],
-            stroke=self.border_stroke,
+            styles=[self.border_stroke],
         )
 
         label_text_cont = {
@@ -145,9 +145,9 @@ class Chart(Generic[X, Y]):
         }[ori]
         axis_label_cont = {
             AxisOrientation.X_PRIMARY: Text.top_centered,
-            AxisOrientation.Y_PRIMARY: partial(Text.bottom_centered, angle=math.tau / 4),
+            AxisOrientation.Y_PRIMARY: partial(Text.bottom_centered, angle=τ / 4),
             AxisOrientation.X_SECONDARY: Text.bottom_centered,
-            AxisOrientation.Y_SECONDARY: partial(Text.top_centered, angle=math.tau / 4),
+            AxisOrientation.Y_SECONDARY: partial(Text.top_centered, angle=τ / 4),
         }[ori]
 
         def make_label(x: object):
@@ -160,9 +160,9 @@ class Chart(Generic[X, Y]):
             AxisOrientation.Y_SECONDARY: lambda y: Point.mk((self.x_size, Y.locate(y))),
         }
         tick_angle = {
-            AxisOrientation.X_PRIMARY: 0.75 * math.tau,
-            AxisOrientation.Y_PRIMARY: 0.5 * math.tau,
-            AxisOrientation.X_SECONDARY: 0.25 * math.tau,
+            AxisOrientation.X_PRIMARY: 0.75 * τ,
+            AxisOrientation.Y_PRIMARY: 0.5 * τ,
+            AxisOrientation.X_SECONDARY: 0.25 * τ,
             AxisOrientation.Y_SECONDARY: 0,
         }
         major_tick_marker = Marker.tick(self.major_tick_length, tick_angle[ori], stroke=self.tick_stroke)
@@ -184,10 +184,10 @@ class Chart(Generic[X, Y]):
             ]
         )
         get_size = {
-            AxisOrientation.X_PRIMARY: lambda t: t.materialize().height,
-            AxisOrientation.Y_PRIMARY: lambda t: t.materialize().width,
-            AxisOrientation.X_SECONDARY: lambda t: t.materialize().height,
-            AxisOrientation.Y_SECONDARY: lambda t: t.materialize().width,
+            AxisOrientation.X_PRIMARY: lambda t: t.materialize().aabb().height,
+            AxisOrientation.Y_PRIMARY: lambda t: t.materialize().aabb().width,
+            AxisOrientation.X_SECONDARY: lambda t: t.materialize().aabb().height,
+            AxisOrientation.Y_SECONDARY: lambda t: t.materialize().aabb().width,
         }
         text_size = max(
             get_size[ori](t) for tick in major_ticks for t in tick.descendants() if isinstance(t, Annotation)
@@ -214,7 +214,7 @@ class Chart(Generic[X, Y]):
             LineSegment(
                 Point.mk((X.locate(x), Y.locate_lower_bound())),
                 Point.mk((X.locate(x), Y.locate_upper_bound())),
-                stroke=self.grid_stroke,
+                styles=[self.grid_stroke],
             )
             for x in x_ticks_to_draw
         ]
@@ -222,7 +222,7 @@ class Chart(Generic[X, Y]):
             LineSegment(
                 Point.mk((X.locate_lower_bound(), Y.locate(y))),
                 Point.mk((X.locate_upper_bound(), Y.locate(y))),
-                stroke=self.grid_stroke,
+                styles=[self.grid_stroke],
             )
             for y in y_ticks_to_draw
         ]
@@ -232,12 +232,14 @@ class Chart(Generic[X, Y]):
         legends = list(itertools.chain(*[plot.legend(self.font) for plot in self.plots]))
         if len(legends) == 0:
             return Group([])
+        background_color = copy.deepcopy(self.background.color)
+        background_color.a = 0.75
         legend = Table(
             legends,
             cell_horizontal_padding=2,
             cell_vertical_padding=(self.font.extents.height - self.font.size),
             border_stroke=self.border_stroke,
-            background=self.background,
+            background=Fill(color=background_color),
             col_alignment="cl",
             row_alignment="c" * len(self.plots),
         )

@@ -123,6 +123,9 @@ class Dash:
 
 
 class Style(ABC):
+    """
+    A style is a set of visual properties that can be applied to an element.
+    """
     pass
 
 

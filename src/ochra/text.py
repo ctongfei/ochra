@@ -1,12 +1,21 @@
+from __future__ import annotations
+
+from dataclasses import replace
 from functools import cached_property
 
-from ochra.geometry import Point, PointI, AffineTransformation, Translation, Rotation, ProjectiveTransformation
-from ochra.core import Element, AnyAffinelyTransformed, Rectangle, AxisAlignedRectangle
+from ochra.geometry import Point, PointI, Translation, Rotation, SimilarTransformation
+from ochra.core import (
+    AxisAlignedRectangle,
+    SimilarInvariant,
+    InferredTransformMixin,
+)
 from ochra.style import Font, TextExtents, _text_extents
 
 
-# TODO: RigidInvariant
-class Text(Element):
+class Text(InferredTransformMixin, SimilarInvariant["Text"]):
+    """
+    Represents a text element.
+    """
     def __init__(self, text: str, bottom_left: PointI, angle: float = 0.0, font: Font = Font()):
         self.text = text
         self.bottom_left = Point.mk(bottom_left)
@@ -85,14 +94,14 @@ class Text(Element):
         bbox = cls(text, Point.origin, angle, font).rotated_visual_bbox
         return cls(text, left_center - bbox.left_center.to_vector(), angle, font)
 
-    def transform(self, f: ProjectiveTransformation) -> "Element":
-        if not isinstance(f, AffineTransformation):
-            raise NotImplementedError("Text does not support projective transformations.")
-        t, r, _, s = f.decompose()
-        if s.scale.x == 1.0 and s.scale.y == -1.0:  # TODO
-            return Text(self.text, t(self.bottom_left), self.angle + r.angle, self.font)
-        else:
-            return AnyAffinelyTransformed(self, f)
+    def _sim_transform(self, f: SimilarTransformation) -> Text:
+        trs, rot, sc = f.decompose_similar()
+        return Text(
+            self.text,
+            trs(self.bottom_left),
+            self.angle + rot.angle,
+            replace(self.font, size=self.font.size * sc.scale),
+        )
 
     def aabb(self) -> AxisAlignedRectangle:
         return self._rotated_actual_bbox.aabb()

@@ -102,7 +102,7 @@ class Table(Group):
                 AxisAlignedRectangle(
                     (cols_x[j] + cell_horizontal_padding, rows_y[i + 1] + cell_vertical_padding),
                     (cols_x[j + 1] - cell_horizontal_padding, rows_y[i] - cell_vertical_padding),
-                ).with_stroke(Stroke(Color(0, 0, 1)))
+                ).set_style(Stroke(Color(0, 0, 1)))
                 for j in range(self.num_cols)
             ]
             for i in range(self.num_rows)
@@ -121,6 +121,6 @@ class Table(Group):
             for i in range(self.num_rows)
             for j in range(self.num_cols)
         ]
-        border = AxisAlignedRectangle((0, 0), (cols_x[-1], rows_y[0]), stroke=border_stroke, fill=background)
+        border = AxisAlignedRectangle((0, 0), (cols_x[-1], rows_y[0]), styles=[border_stroke, background])
 
         super().__init__(elements=[border] + aligned_cells)

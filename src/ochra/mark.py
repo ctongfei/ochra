@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import math
 from collections.abc import Collection
 from enum import Enum
@@ -20,16 +22,16 @@ class MarkerUnits(Enum):
 
 
 class Marker:
-    all_named_markers: dict[str, "Marker"] = {}
-    all_named_symbols: dict[str, "Marker"] = {}
+    all_named_markers: dict[str, Marker] = {}
+    all_named_symbols: dict[str, Marker] = {}
 
     def __init__(
         self,
         elements: Collection[Element],
-        viewport: "AxisAlignedRectangle",
+        viewport: AxisAlignedRectangle,
         units: MarkerUnits = MarkerUnits.user_space_on_use,
         orientation: MarkerOrientation | float = MarkerOrientation.auto,
-        name: Optional[str] = None,
+        name: str | None = None,
     ):
         self.elements = elements
         self.viewport = viewport
@@ -38,7 +40,7 @@ class Marker:
         self.name = name if name is not None else hex(id(self))[2:]
 
     @property
-    def canvas(self) -> "Canvas":
+    def canvas(self) -> Canvas:
         return Canvas(self.elements, self.viewport)
 
     @classmethod
@@ -63,7 +65,7 @@ class Marker:
     @classmethod
     def asterisk(cls, n: int, size: float = 4, angle: float = τ / 4, **kwargs):
         return cls(
-            [LineSegment((0, 0), (Vector.unit(angle + τ * i / n) * (size / 2)).to_point(), **kwargs) for i in range(n)],
+            [LineSegment((0, 0), (Vector.unit(angle + τ * i / n) * (size / 2)).to_point()) for i in range(n)],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 
@@ -90,11 +92,11 @@ class Marker:
         )
 
     @classmethod
-    def register_as_symbol(cls, m: "Marker"):
+    def register_as_symbol(cls, m: Marker):
         Marker.all_named_symbols[f"symbol-{m.name}"] = m
 
     @classmethod
-    def register_as_marker(cls, m: "Marker"):
+    def register_as_marker(cls, m: Marker):
         Marker.all_named_markers[m.name] = m
 
 

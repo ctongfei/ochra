@@ -96,8 +96,8 @@ def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRe
 def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None":
     """Computes the smallest axis-aligned bounding box that contains all the given bounding boxes."""
     from ochra.core import AxisAlignedRectangle
-    bboxes = list(bboxes)
-    if any(bbox is None for bbox in bboxes):
+    bboxes = [bbox for bbox in bboxes if bbox is not None]
+    if len(bboxes) == 0:
         return None
     lbs = [bbox.bottom_left.loc for bbox in bboxes]
     rus = [bbox.top_right.loc for bbox in bboxes]

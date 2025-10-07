@@ -3,7 +3,7 @@ from typing import Collection, Optional, Tuple
 from ochra.core import Element, Group, Polyline
 from ochra.text import Text
 from ochra.style import Font, Stroke
-from ochra.mark import Mark, Marker
+from ochra.mark import Mark, Marker, MarkerConfig
 from ochra.geometry import Point
 from ochra.plot.axis import Axis
 from ochra.plot.plot import Plot
@@ -39,7 +39,7 @@ class LinePlot(Plot[float, float]):
             elements=[
                 Polyline(
                     points,
-                    stroke=self.stroke,
+                    styles=[self.stroke],
                 ),
                 *marks,
             ]
@@ -47,6 +47,6 @@ class LinePlot(Plot[float, float]):
 
     def legend(self, font: Font) -> list[tuple[Element, Element]]:
         size = font.extents.height
-        mark = Polyline([(0, 0), (size / 2, 0), (size, 0)], stroke=self.stroke, marker_mid=self.marker)
+        mark = Polyline([(0, 0), (size / 2, 0), (size, 0)], styles=[self.stroke, MarkerConfig(mid=self.marker)])
         text = Text(self.name, (0, 0), font=font)
         return [(mark, text)]

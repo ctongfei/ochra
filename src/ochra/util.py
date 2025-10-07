@@ -1,6 +1,6 @@
 import dataclasses
 from collections.abc import Sequence, Callable
-from typing import Any, Self, overload
+from typing import Any, Self, overload, Protocol
 
 import jax
 
@@ -28,36 +28,8 @@ class Global:
     num_second_order_steps: int = 64
     """The number of steps for tracing quadratic Bézier paths."""
 
-    num_hermite_steps: int = 32
+    num_hermite_steps: int = 64
     """The number of steps for tracing Hermite splines."""
-
-    @classmethod
-    def set_approx_eps(cls, eps: float):
-        cls.approx_eps = eps
-
-    @classmethod
-    def set_boundary_eps(cls, zeta: float):
-        cls.boundary_eps = zeta
-
-    @classmethod
-    def set_first_order_step_size(cls, step: float):
-        cls.first_order_step_size = step
-
-    @classmethod
-    def set_second_order_step_size(cls, step: float):
-        cls.second_order_step_size = step
-
-    @classmethod
-    def set_num_first_order_steps(cls, n: int):
-        cls.num_first_order_steps = n
-
-    @classmethod
-    def set_num_second_order_steps(cls, n: int):
-        cls.num_second_order_steps = n
-
-    @classmethod
-    def set_num_hermite_steps(cls, n: int):
-        cls.num_hermite_steps = n
 
 
 class classproperty:
@@ -99,6 +71,10 @@ class IndexedSequence[T](Sequence[T]):
     def __iter__(self):
         for i in range(self._length):
             yield self._get(i)
+
+
+class Comparable[T](Protocol):
+    def __lt__(self, other: T) -> bool: ...
 
 
 def f2s(x: Any) -> str:

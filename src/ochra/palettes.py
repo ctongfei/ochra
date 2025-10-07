@@ -126,6 +126,55 @@ solarized: Palette = Palette(
     ],
 )
 
+
+gruvbox = Palette(
+    "gruvbox",
+    {
+        "red": Color.from_hex("#cc241d"),
+        "orange": Color.from_hex("#d65d0e"),
+        "yellow": Color.from_hex("#d79921"),
+        "green": Color.from_hex("#98971a"),
+        "aqua": Color.from_hex("#689d6a"),
+        "blue": Color.from_hex("#458588"),
+        "purple": Color.from_hex("#b16286"),
+        "lightred": Color.from_hex("#fb4934"),
+        "lightorange": Color.from_hex("#fe8019"),
+        "lightyellow": Color.from_hex("#fabd2f"),
+        "lightgreen": Color.from_hex("#b8bb26"),
+        "lightaqua": Color.from_hex("#8ec07c"),
+        "lightblue": Color.from_hex("#83a598"),
+        "lightpurple": Color.from_hex("#d3869b"),
+        "dark0": Color.from_hex("#282828"),
+        "dark0_hard": Color.from_hex("#1d2021"),
+        "dark0_soft": Color.from_hex("#32302f"),
+        "dark1": Color.from_hex("#3c3836"),
+        "dark2": Color.from_hex("#504945"),
+        "dark3": Color.from_hex("#665c54"),
+        "dark4": Color.from_hex("#7c6f64"),
+        "gray": Color.from_hex("#928374"),
+        "light0": Color.from_hex("#fbf1c7"),
+        "light0_hard": Color.from_hex("#f9f5d7"),
+        "light0_soft": Color.from_hex("#f2e5bc"),
+        "light1": Color.from_hex("#ebdbb2"),
+        "light2": Color.from_hex("#d5c4a1"),
+        "light3": Color.from_hex("#bdae93"),
+        "light4": Color.from_hex("#a89984"),
+    },
+    default_light=".light0",
+    default_dark=".dark0",
+    default_gray=".gray",
+    color_wheel=[
+        ".red",
+        ".orange",
+        ".yellow",
+        ".green",
+        ".aqua",
+        ".blue",
+        ".purple",
+    ],
+)
+
+
 # From https://developer.apple.com/design/human-interface-guidelines/color#iOS-iPadOS-system-colors.
 ios: Palette = Palette(
     "ios",

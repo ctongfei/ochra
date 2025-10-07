@@ -9,7 +9,7 @@ blue = ox.Stroke(width=6, color=oxp.ios.blue)
 
 f0 = (0, 0)
 f1 = (-50, 70)
-ell = ox.Ellipse.from_foci_and_major_axis(f0, f1, 120, stroke=blue)
+ell = ox.Ellipse.from_foci_and_major_axis(f0, f1, 120).set_style(blue)
 ell2 = ell.transform(ox.Rotation(deg_to_rad(30)))
 
 canvas = ox.Canvas(
@@ -27,7 +27,7 @@ canvas = ox.Canvas(
                 ox.LineSegment(ell.covertex0, ell.covertex1),
                 ell.directrix0(),
                 ell.directrix1(),
-                ell.trace_quadratic_bezier_path(step=32, num_steps=16, markers=ox.mark.MarkerConfig(mid=plus)),
+                ell.approx_as_hermite_spline(num_samples_per_piece=32).set_style(ox.Stroke(oxp.ios.green, width=1), ox.mark.MarkerConfig(mid=cross)),
             ]
         ),
     ],

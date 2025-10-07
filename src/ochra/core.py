@@ -2,7 +2,7 @@ from __future__ import annotations
 import copy
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Collection, Iterator, Sequence
-from dataclasses import dataclass, replace, field
+from dataclasses import dataclass
 from functools import cached_property, reduce
 import math
 from typing import (
@@ -11,7 +11,6 @@ from typing import (
     Self,
     cast,
     overload,
-    Protocol,
 )
 
 import numpy as np  # TODO: get rid of
@@ -20,7 +19,7 @@ import jax.core
 import jax.numpy as jnp
 from jaxtyping import Float
 
-from ochra.util import Global, IndexedSequence
+from ochra.util import Global, IndexedSequence, classproperty
 from ochra.geometry import (
     τ,
     Scalar,
@@ -41,8 +40,11 @@ from ochra.geometry import (
     RigidTransformation,
     VectorSequence,
     VectorSequenceI,
+    SimilarTransformation,
+    Reflection,
+    UniformScaling,
 )
-from ochra.style import Stroke, Fill, Color, Dash, LineCap, LineJoin, Style, merge_style
+from ochra.style import Stroke, Style, merge_style
 from ochra.functions import (
     lerp,
     lerp_point,
@@ -68,6 +70,9 @@ class Element(ABC):
     styles: Sequence[Style]
 
     def get_style[S: Style](self, cls: type[S]) -> S:
+        """
+        Returns the style of the given type (e.g. Stroke, Fill, etc.) applied to this element.
+        """
         return reduce(
             merge_style,
             (s for s in self.styles if isinstance(s, cls)),
@@ -133,9 +138,14 @@ class Element(ABC):
     def scale(self, sx: Scalar, sy: Scalar, anchor: PointI = Point.origin) -> Element:
         anchor = Point.mk(anchor)
         if anchor == Point.origin:
+            if sx == sy:
+                return self.transform(UniformScaling(sx))
             return self.transform(Scaling((sx, sy)))
         else:
             return self.transform(Scaling.centered((sx, sy), anchor))
+
+    def reflect(self, line: LineI | Line) -> Element:
+        return self.transform(Reflection(line))
 
 
 class TranslationalInvariant[E: Element](ABC):
@@ -168,6 +178,15 @@ class ScalingInvariant[E: Element](ABC):
         raise NotImplementedError(f"_scale_transform() is not implemented for type {type(self)}.")
 
 
+class SimilarInvariant[E: Element](ABC):
+    """
+    Represents a type that is type-invariant under similarity transformations.
+    """
+    @abstractmethod
+    def _sim_transform(self, f: SimilarTransformation) -> E:
+        raise NotImplementedError(f"_sim_transform() is not implemented for type {type(self)}.")
+
+
 class AffineInvariant[E: Element](ABC):
     """
     Represents a type that is type-invariant under affine transformations.
@@ -192,9 +211,11 @@ class InferredTransformMixin(Element):
     @overload
     def transform[E: Element](self: TranslationalInvariant[E], f: Translation) -> E: ...
     @overload
-    def transform[E: Element](self: ScalingInvariant[E], f: Scaling) -> E: ...
-    @overload
     def transform[E: Element](self: RigidInvariant[E], f: RigidTransformation) -> E: ...
+    @overload
+    def transform[E: Element](self: SimilarInvariant[E], f: SimilarTransformation) -> E: ...
+    @overload
+    def transform[E: Element](self: ScalingInvariant[E], f: Scaling) -> E: ...
     @overload
     def transform[E: Element](self: AffineInvariant[E], f: AffineTransformation) -> E: ...
     @overload
@@ -209,10 +230,12 @@ class InferredTransformMixin(Element):
     def transform(self, f):
         if isinstance(self, TranslationalInvariant) and isinstance(f, Translation):
             return self._trans_transform(f)
-        elif isinstance(self, ScalingInvariant) and isinstance(f, Scaling):  # TODO: scaling with translation?
-            return self._scale_transform(f)
         elif isinstance(self, RigidInvariant) and isinstance(f, RigidTransformation):
             return self._rigid_transform(f)
+        elif isinstance(self, SimilarInvariant) and isinstance(f, SimilarTransformation):
+            return self._sim_transform(f)
+        elif isinstance(self, ScalingInvariant) and isinstance(f, Scaling):
+            return self._scale_transform(f)
         elif isinstance(self, AffineInvariant) and isinstance(f, AffineTransformation):
             return self._aff_transform(f)
         elif isinstance(self, ProjectiveInvariant) and isinstance(f, ProjectiveTransformation):
@@ -233,6 +256,8 @@ class InferredTransformMixin(Element):
     @overload
     def translate[E: Element](self: RigidInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
     @overload
+    def translate[E: Element](self: SimilarInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
+    @overload
     def translate[E: Element](self: AffineInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
     @overload
     def translate[E: Element](self: ProjectiveInvariant[E], dx: Scalar, dy: Scalar) -> E: ...
@@ -244,6 +269,8 @@ class InferredTransformMixin(Element):
 
     @overload
     def rotate[E: Element](self: RigidInvariant[E], θ: Scalar, anchor: PointI = Point.origin) -> E: ...
+    @overload
+    def rotate[E: Element](self: SimilarInvariant[E], θ: Scalar, anchor: PointI = Point.origin) -> E: ...
     @overload
     def rotate[E: Element](self: AffineInvariant[E], θ: Scalar, anchor: PointI = Point.origin) -> E: ...
     @overload
@@ -272,6 +299,18 @@ class InferredTransformMixin(Element):
             return self.transform(Scaling((sx, sy)))
         else:
             return self.transform(Scaling.centered((sx, sy), anchor))
+
+    @overload
+    def reflect[E: Element](self: RigidInvariant[E], line: LineI | Line) -> E: ...
+    @overload
+    def reflect[E: Element](self: SimilarInvariant[E], line: LineI | Line) -> E: ...
+    @overload
+    def reflect[E: Element](self: AffineInvariant[E], line: LineI | Line) -> E: ...
+    @overload
+    def reflect[E: Element](self: ProjectiveInvariant[E], line: LineI | Line) -> E: ...
+
+    def reflect(self, line: LineI | Line) -> Element:
+        return self.transform(Reflection(line))
 
 
 class AnyAffinelyTransformed(InferredTransformMixin, AffineInvariant["AnyAffinelyTransformed"]):
@@ -414,7 +453,7 @@ class Parametric(Element, ABC):
     def approx_as_polyline(
         self,
         num_samples_per_piece: int = Global.num_first_order_steps,
-        boundary_eps: float = Global.boundary_eps,\
+        boundary_eps: float = Global.boundary_eps,
     ) -> "Polyline | Group":
         """
         Approximates the element as a polyline, or a group of polylines if not continuous.
@@ -575,6 +614,13 @@ class Implicit(Element):
     def gradient(self):
         r"""Computes the gradient $\dfrac{{\rm d}f}{{\rm d}\mathbf{x}}$ of the implicit function."""
         return jax.jit(jax.jacrev(self.implicit_func))
+
+    def _raw_implicit_func(self, p: Float[jax.Array, "2"]) -> Float[jax.Array, ""]:
+        return self.implicit_func(Point(p))
+
+    @cached_property
+    def _raw_implicit_func_batched(self):
+        return jax.jit(jax.vmap(self._raw_implicit_func))
 
     def _normal_vector_at_point(self, p: Point) -> Vector:
         g = self.gradient(p).to_vector()
@@ -762,13 +808,13 @@ class Line(InferredTransformMixin, Parametric, Implicit, ProjectiveInvariant["Li
     def __str__(self):
         return f"Line({self._a:.4f}x + {self._b:.4f}y + {self._c:.4f} = 0)"
 
-    @classmethod
-    def y_axis(cls):
-        return cls((1, 0, 0))
+    @classproperty
+    def y_axis(cls) -> Line:
+        return Line((1, 0, 0))
 
-    @classmethod
-    def x_axis(cls):
-        return cls((0, 1, 0))
+    @classproperty
+    def x_axis(cls) -> Line:
+        return Line((0, 1, 0))
 
     @classmethod
     def mk(cls, l: "LineI | Line"):
@@ -1154,16 +1200,20 @@ class Circle(Ellipse, Parametric, RigidInvariant["Circle"]):
     def __init__(self, radius: float, center: PointI = (0, 0), styles: Sequence[Style] = ()):
         center = Point.mk(center)
         tr = Translation(center.loc)
-        std_matrix = jnp.diag(jnp.array([1, 1, -(radius**2)]))
-        matrix = tr.inverse().matrix.T @ std_matrix @ tr.matrix
+        std_matrix = jnp.diag(jnp.array([1, 1, -radius * radius]))
+        inv_tr = tr.inverse()
+        matrix = inv_tr.matrix.T @ std_matrix @ inv_tr.matrix
         super().__init__(matrix, styles=styles)
         self.center = center
         self.radius = radius
 
+    def __str__(self):
+        return f"Circle(C = {self.center}, r = {self.radius})"
+
     def at(self, t: Scalar):
-        x, y = self.center.x, self.center.y
         θ = t * τ  # [0, 1] -> [0, τ]
-        return Point.mk(x + self.radius * math.cos(θ), y + self.radius * math.sin(θ))
+        cs = jnp.array([jnp.cos(θ), jnp.sin(θ)])
+        return self.center + Vector(cs) * self.radius
 
     def __contains__(self, p: PointI) -> bool:
         p = Point.mk(p)
@@ -1178,9 +1228,9 @@ class Circle(Ellipse, Parametric, RigidInvariant["Circle"]):
         return Circle(self.radius, f(self.center), styles=self.styles)
 
     @classmethod
-    def from_center_and_radius(cls, center: PointI, radius: float, **kwargs):
+    def from_center_and_radius(cls, center: PointI, radius: float, styles: Sequence[Style] = ()):
         center = Point.mk(center)
-        return cls(radius, center, **kwargs)
+        return cls(radius, center, styles=styles)
 
 
 class Arc(Parametric):
@@ -1487,6 +1537,11 @@ class Polygon(InferredTransformMixin, Parametric, ProjectiveInvariant["Polygon"]
         i = int(x)
         t0 = x - i
         return self.edges[i].at(t0)
+
+    def as_polyline(self) -> Polyline:
+        points = self.vertices.points
+        points = jnp.concatenate([points, points[:1]], axis=0)
+        return Polyline(PointSequence(points), styles=self.styles)
 
     def _proj_transform(self, f: ProjectiveTransformation) -> Polygon:
         return Polygon(f.apply_batch(self.vertices), styles=self.styles)

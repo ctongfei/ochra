@@ -1,13 +1,20 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Generic, Literal
 from collections.abc import Callable, Sequence
 
 import numpy as np
 
 from ochra.plot.collections import X
+from ochra.util import Comparable
 
 
-class Axis(ABC, Generic[X]):
+class AxisKind(Enum):
+    CONTINUOUS = "continuous"
+    DISCRETE = "discrete"
+
+
+class Axis[X](ABC):
     def __init__(
         self,
         label: str,
@@ -24,8 +31,8 @@ class Axis(ABC, Generic[X]):
 
     @property
     @abstractmethod
-    def kind(self) -> Literal["continuous", "discrete"]:
-        pass
+    def kind(self) -> AxisKind:
+        raise NotImplementedError
 
     @property
     def lower_bound(self) -> X:
@@ -69,8 +76,8 @@ class ContinuousAxis(Axis[float]):
         return self.bounds[0] <= x <= self.bounds[1]
 
     @property
-    def kind(self) -> Literal["continuous", "discrete"]:
-        return "continuous"
+    def kind(self) -> AxisKind:
+        return AxisKind.CONTINUOUS
 
 
 class DiscreteAxis(Axis[X]):
@@ -99,8 +106,8 @@ class DiscreteAxis(Axis[X]):
         return x in self.locate_dict
 
     @property
-    def kind(self) -> Literal["continuous", "discrete"]:
-        return "discrete"
+    def kind(self) -> AxisKind:
+        return AxisKind.DISCRETE
 
 
 # Date/time axis

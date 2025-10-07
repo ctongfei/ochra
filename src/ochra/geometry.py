@@ -4,6 +4,7 @@ Defines the geometric primitives used in Ochra.
 from __future__ import annotations
 import math
 from collections.abc import Sequence
+from functools import cached_property
 from typing import TYPE_CHECKING, overload
 
 import jax
@@ -387,6 +388,7 @@ class ProjectiveTransformation:
     def __call__(self, p: Point | ProjPoint) -> Point | ProjPoint | None:
         projective = isinstance(p, ProjPoint)
         if not projective:
+            assert isinstance(p, Point)
             p = p.to_proj_point()
         pp = ProjPoint(jnp.dot(self.matrix, p.loc))
         if not projective:
@@ -445,6 +447,7 @@ class AffineTransformation(ProjectiveTransformation):
     def __call__(self, p: Point | ProjPoint) -> Point | ProjPoint:
         projective = isinstance(p, ProjPoint)
         if not projective:
+            assert isinstance(p, Point)
             p = p.to_proj_point()
         pp = ProjPoint(jnp.dot(self.matrix, p.loc))
         if not projective:
@@ -492,15 +495,36 @@ class AffineTransformation(ProjectiveTransformation):
         return cls(jnp.eye(3))
 
 
+class SimilarTransformation(AffineTransformation):
+
+    @overload
+    def __matmul__[Tr: (SimilarTransformation, AffineTransformation)](self, other: Tr) -> Tr: ...
+    @overload
+    def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation: ...
+
+    def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation:
+        if isinstance(other, SimilarTransformation):
+            return SimilarTransformation(self.matrix @ other.matrix)
+        elif isinstance(other, AffineTransformation):
+            return AffineTransformation(self.matrix @ other.matrix)
+        return ProjectiveTransformation(self.matrix @ other.matrix)
+
+    def decompose_similar(self) -> tuple[Translation, Rotation, UniformScaling]:
+        tr, rot, _, sc = super().decompose()
+        return tr, rot, UniformScaling(sc.scale.x)
+
+
 class RigidTransformation(AffineTransformation):
     @overload
-    def __matmul__[Tr: (RigidTransformation, AffineTransformation, RigidTransformation)](self, other: Tr) -> Tr: ...
+    def __matmul__[Tr: (RigidTransformation, SimilarTransformation, AffineTransformation)](self, other: Tr) -> Tr: ...
     @overload
     def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation: ...
 
     def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation:
         if isinstance(other, RigidTransformation):
             return RigidTransformation(self.matrix @ other.matrix)
+        elif isinstance(other, SimilarTransformation):
+            return SimilarTransformation(self.matrix @ other.matrix)
         elif isinstance(other, AffineTransformation):
             return AffineTransformation(self.matrix @ other.matrix)
         return ProjectiveTransformation(self.matrix @ other.matrix)
@@ -568,7 +592,7 @@ class Scaling(AffineTransformation):
         self.scale = s
 
     @overload
-    def __matmul__[Tr: ("Scaling", AffineTransformation)](self, other: Tr) -> Tr: ...
+    def __matmul__[Tr: (Scaling, AffineTransformation)](self, other: Tr) -> Tr: ...
     @overload
     def __matmul__(self, other: ProjectiveTransformation) -> ProjectiveTransformation: ...
 
@@ -588,6 +612,21 @@ class Scaling(AffineTransformation):
         else:
             v = center.to_vector()
             return Translation(v) @ sc @ Translation(-v)
+
+
+class UniformScaling(Scaling, SimilarTransformation):
+    def __init__(self, s: Scalar):
+        self.uniform_scale = s
+        super().__init__(Vector.mk((s, s)))
+
+    @classmethod
+    def centered_uniform(cls, s: Scalar, center: PointI = Point.origin):
+        center = Point.mk(center)
+        if center == Point.origin:
+            return cls(s)
+        else:
+            v = center.to_vector()
+            return Translation(v) @ cls(s) @ Translation(-v)
 
 
 class ShearX(AffineTransformation):
@@ -629,7 +668,12 @@ class Reflection(RigidTransformation):
             a, b, c = line
         d = math.hypot(a, b)
         a, b, c = a / d, b / d, c / d
+        self.coef = (a, b, c)
         super().__init__(
             jnp.array([[1 - 2 * a**2, -2 * a * b, -2 * a * c], [-2 * a * b, 1 - 2 * b**2, -2 * b * c], [0, 0, 1]])
         )
-        self.line = line
+
+    @cached_property
+    def symmetry_line(self):
+        return Line.mk(self.coef)
+

@@ -97,19 +97,18 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
         return element_to_svg(c, e.canvas.translate(d.x, d.y))
     elif isinstance(e, Text):
         if e.angle != 0.0:
-            flip = Scaling((1, -1))
             return element_to_svg(
                 c,
                 AnyAffinelyTransformed(
                     Text(e.text, e.bottom_left, angle=0.0, font=e.font),
-                    Rotation.centered(-e.angle, flip(e.bottom_left)),
+                    Rotation.centered(-e.angle, e.bottom_left),
                 ),
             )
         else:
             t = ET.Element(
                 "text",
                 x=f2s(e.visual_bbox().bottom_left.x),
-                y=f2s(-e.visual_bbox().bottom_left.y),
+                y=f2s(e.visual_bbox().bottom_left.y),
                 **font_to_css(e.font),
             )
             t.text = e.text
@@ -229,7 +228,7 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
     elif isinstance(e, Parametric):
         return element_to_svg(c, e.approx_as_hermite_spline())
     elif isinstance(e, Annotation):  # Materialize under the Ochra coordinate system
-        return element_to_svg(c, e.scale(1, -1).materialize().scale(1, -1))
+        return element_to_svg(c, e.reflect(Line.x_axis).materialize().reflect(Line.x_axis))
     else:
         raise NotImplementedError(f"Unsupported element type: {type(e)}")
 
@@ -262,10 +261,32 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
     return symbol
 
 
+def to_svg_coord[E: Element](e: E) -> E:
+    if isinstance(e, Text):
+        return Text(e.text, e.bottom_left.scale(1, -1), e.angle, e.font)
+    elif isinstance(e, Group):
+        return Group([to_svg_coord(e) for e in e.elements])
+    else:
+        return e.scale(1, -1)
+
+
+def materialize[E: Element](e: E) -> E:
+    if isinstance(e, Annotation):
+        return e.materialize()
+    elif isinstance(e, Canvas):
+        return Canvas([materialize(e) for e in e.elements], e.viewport)
+    elif isinstance(e, Group):
+        return Group([materialize(e) for e in e.elements])
+    else:
+        return e
+
+
 def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float = 0.0) -> ET.Element:
     hp, vp = horizontal_padding, vertical_padding
+    # Materialize annotations
+    c = materialize(c)
     all_elements = [
-        element_to_svg(c, e.scale(1, -1))  # to SVG coordinate system
+        element_to_svg(c, to_svg_coord(e))  # to SVG coordinate system
         for e in c.elements
     ]
     all_markers = [marker_to_svg_def(c, m) for m in Marker.all_named_markers.values()]

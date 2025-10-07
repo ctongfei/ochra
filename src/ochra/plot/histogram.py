@@ -29,7 +29,7 @@ class Histogram(Plot[Xc, Yc]):
         return Group(
             elements=[
                 AxisAlignedRectangle(
-                    (x_axis.locate(l), 0), (x_axis.locate(r), y_axis.locate(count)), stroke=self.stroke, fill=self.fill
+                    (x_axis.locate(l), 0), (x_axis.locate(r), y_axis.locate(count)), styles=[self.stroke, self.fill]
                 )
                 for l, r, count in hist
             ]
@@ -37,6 +37,6 @@ class Histogram(Plot[Xc, Yc]):
 
     def legend(self, font: Font) -> list[tuple[Element, Element]]:
         size = font.size
-        mark = AxisAlignedRectangle((0, 0), (size, size), fill=self.fill, stroke=self.stroke)
+        mark = AxisAlignedRectangle((0, 0), (size, size), styles=[self.stroke, self.fill])
         text = Text(self.name, (0, 0), font=font)
         return [(mark, text)]

@@ -16,9 +16,10 @@ def text_anchors(t: Text):
     return ox.Group(
         [
             t,
-            ox.Circle(1, t.visual_center(), stroke=red),
-            t.visual_bbox().with_stroke(blue),
-            t.aabb().with_stroke(green),
+            ox.Circle(3, t.bottom_left, styles=[blue]),
+            #ox.Circle(2, t.visual_center(), styles=[red]),
+            t.visual_bbox().set_style(blue),
+            t.aabb().set_style(green),
         ]
     )
 
