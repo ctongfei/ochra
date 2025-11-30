@@ -104,6 +104,9 @@ class Vector:
             return x
         else:
             assert isinstance(x, jax.Array | tuple)
+            if isinstance(x, jax.Array):
+                assert x.shape == (2,)
+                return cls(x)
             return cls(jnp.array([float(x[0]), float(x[1])]))
 
     @classmethod
@@ -430,8 +433,9 @@ class ProjectiveTransformation:
 
 
 class AffineTransformation(ProjectiveTransformation):
-    """
+    r"""
     Represents a 2D affine transformation.
+    An affine transformation is a projective transformation that preserves parallelism.
     """
 
     def __init__(self, matrix: Float[jax.Array, "3 3"]):
@@ -510,11 +514,12 @@ class SimilarTransformation(AffineTransformation):
         return ProjectiveTransformation(self.matrix @ other.matrix)
 
     def decompose_similar(self) -> tuple[Translation, Rotation, UniformScaling]:
+        """Decomposes a similar transformation into the composition of translation, rotation and scaling."""
         tr, rot, _, sc = super().decompose()
         return tr, rot, UniformScaling(sc.scale.x)
 
 
-class RigidTransformation(AffineTransformation):
+class RigidTransformation(SimilarTransformation):
     @overload
     def __matmul__[Tr: (RigidTransformation, SimilarTransformation, AffineTransformation)](self, other: Tr) -> Tr: ...
     @overload
@@ -529,7 +534,7 @@ class RigidTransformation(AffineTransformation):
             return AffineTransformation(self.matrix @ other.matrix)
         return ProjectiveTransformation(self.matrix @ other.matrix)
 
-    def decompose_rigid(self) -> tuple["Translation", "Rotation"]:
+    def decompose_rigid(self) -> tuple[Translation, Rotation]:
         return Translation(self.matrix[:2, 2]), Rotation(jnp.arctan2(self.matrix[1, 0], self.matrix[0, 0]))
 
 
@@ -669,7 +674,7 @@ class Reflection(RigidTransformation):
         d = math.hypot(a, b)
         a, b, c = a / d, b / d, c / d
         self.coef = (a, b, c)
-        super().__init__(
+        AffineTransformation.__init__(self,
             jnp.array([[1 - 2 * a**2, -2 * a * b, -2 * a * c], [-2 * a * b, 1 - 2 * b**2, -2 * b * c], [0, 0, 1]])
         )
 

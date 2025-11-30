@@ -31,6 +31,15 @@ class Global:
     num_hermite_steps: int = 64
     """The number of steps for tracing Hermite splines."""
 
+    prng_key = jax.random.key(0)
+    """The PRNG key for random number generation."""
+
+    @classmethod
+    def get_prng_key(cls):
+        new_key, subkey = jax.random.split(cls.prng_key)
+        cls.prng_key = new_key
+        return subkey
+
 
 class classproperty:
     """

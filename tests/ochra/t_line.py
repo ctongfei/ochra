@@ -1,5 +1,7 @@
 import ochra as ox
 import ochra.svg
+from ochra.palettes import ios
+from ochra.functions import deg_to_rad
 
 
 marker = ox.Marker.bullet(size=1)
@@ -17,7 +19,8 @@ canvas = ox.Canvas(
                 ox.Group([ox.Mark(line.at(t), marker) for t in [0.1, 0.5, 0.9]]),
             ]
         ),
+        ox.Ray((0, 0), deg_to_rad(45), styles=[ox.Stroke(color=ios.red, width=2)]),
     ],
     viewport=ox.AxisAlignedRectangle((-50, -50), (50, 50)),
 )
-ochra.svg.save_svg(canvas, "test.svg")
+ochra.svg.save_svg(canvas, "test.svg", horizontal_padding=10, vertical_padding=10)

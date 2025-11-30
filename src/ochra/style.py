@@ -1,10 +1,10 @@
+from __future__ import annotations
 import dataclasses
-from abc import ABC, abstractmethod
-from copy import deepcopy
+import colorsys
+from abc import ABC
 from collections.abc import Sequence, Mapping, Iterator
 from dataclasses import dataclass, field, replace
 from enum import Enum
-from typing import Tuple, Optional, Union, Self
 import cairo
 
 from ochra.util import classproperty
@@ -36,47 +36,50 @@ class Color:
         return self.r, self.g, self.b, self.a
 
     @classmethod
-    def from_hex(cls, hex: str, alpha: float = 1.0) -> "Color":
+    def from_hex(cls, hex: str, alpha: float = 1.0) -> Color:
         hex = hex.lstrip("#")
         return cls(r=int(hex[0:2], 16) / 255, g=int(hex[2:4], 16) / 255, b=int(hex[4:6], 16) / 255, a=alpha)
 
     @classmethod
-    def from_rgb(cls, red: float, green: float, blue: float, alpha: float = 1.0) -> "Color":
+    def from_rgb(cls, red: float, green: float, blue: float, alpha: float = 1.0) -> Color:
         return cls(red, green, blue, alpha)
 
     @classmethod
-    def from_rgb_int(cls, red: int, green: int, blue: int, alpha: int = 255) -> "Color":
+    def from_rgb_int(cls, red: int, green: int, blue: int, alpha: int = 255) -> Color:
         return cls(red / 255, green / 255, blue / 255, alpha / 255)
 
     @classmethod
-    def from_hsl(cls):
-        # TODO: hsl and hsla
-        pass
+    def from_hsl(cls, hue: float, saturation: float, lightness: float, alpha: float = 1.0) -> Color:
+        r, g, b = colorsys.hls_to_rgb(hue, lightness, saturation)
+        return cls(r, g, b, alpha)
 
 
 class Colormap:
+    """
+    A colormap is a function that maps a value in [0, 1] to a color.
+    """
     def __call__(self, t: float) -> Color:
         raise NotImplementedError
 
     @classproperty
-    def viridis(cls) -> "Colormap":
+    def viridis(cls) -> Colormap:
         return InterpolatedColormap._from_matplotlib_data(_viridis_data)
 
     @classproperty
-    def magma(cls) -> "Colormap":
+    def magma(cls) -> Colormap:
         return InterpolatedColormap._from_matplotlib_data(_magma_data)
 
     @classproperty
-    def inferno(cls) -> "Colormap":
+    def inferno(cls) -> Colormap:
         return InterpolatedColormap._from_matplotlib_data(_inferno_data)
 
     @classproperty
-    def plasma(cls) -> "Colormap":
+    def plasma(cls) -> Colormap:
         return InterpolatedColormap._from_matplotlib_data(_plasma_data)
 
 
 class InterpolatedColormap(Colormap):
-    def __init__(self, data: list[Color]):
+    def __init__(self, data: Sequence[Color]):
         self.data = data
 
     def __call__(self, t: float) -> Color:
@@ -129,7 +132,7 @@ class Style(ABC):
     pass
 
 
-def merge_style[T: Style](a: T, b: T) -> T:
+def merge_style[S: Style](a: S, b: S) -> S:
     b_dict = {
         f.name: getattr(b, f.name)
         for f in dataclasses.fields(b)
@@ -140,13 +143,13 @@ def merge_style[T: Style](a: T, b: T) -> T:
 
 @dataclass
 class Stroke(Style):
-    color: Optional[Color] = field(default_factory=lambda: Color(0, 0, 0, 1))  # black
-    dash: Optional[Dash] = None
-    line_cap: Optional[LineCap] = None
-    line_join: Optional[LineJoin] = None
-    miter_limit: Optional[float] = None
-    opacity: Optional[float] = None
-    width: Optional[float] = None
+    color: Color | None = field(default_factory=lambda: Color(0, 0, 0, 1))  # black
+    dash: Dash | None = None
+    line_cap: LineCap | None = None
+    line_join: LineJoin | None = None
+    miter_limit: float | None = None
+    opacity: float | None = None
+    width: float | None = None
 
     def replace(self, **kwargs):
         return replace(self, **kwargs)
@@ -163,9 +166,9 @@ class FillRule(Enum):
 
 @dataclass
 class Fill(Style):
-    color: Optional[Color] = field(default_factory=lambda: Color(0, 0, 0, 0))  # transparent
-    opacity: Optional[float] = None
-    rule: Optional[FillRule] = None
+    color: Color | None = field(default_factory=lambda: Color(0, 0, 0, 0))  # transparent
+    opacity: float | None = None
+    rule: FillRule | None = None
 
 
 class FontStyle(Enum):
@@ -214,11 +217,11 @@ class TextExtents:
 class Font:
     family: str = "sans-serif"
     size: float = 9.0
-    size_adjust: Optional[float] = 0.0
-    stretch: Optional[str] = None
-    style: Optional[FontStyle] = None
-    variant: Optional[str] = None  # TODO: full CSS support
-    weight: Optional[FontWeight] = None
+    size_adjust: float | None = 0.0
+    stretch: str | None = None
+    style: FontStyle | None = None
+    variant: str | None = None  # TODO: full CSS support
+    weight: FontWeight | None = None
     extents: FontExtents | None = None
 
     def __post_init__(self):
@@ -231,7 +234,7 @@ class Font:
         return Font(self.family, self.size, self.size_adjust, self.stretch, self.style, self.variant, FontWeight.bold())
 
 
-def _style_to_cairo(style: Optional[FontStyle]):
+def _style_to_cairo(style: FontStyle | None):
     if style == FontStyle.italic:
         return cairo.FONT_SLANT_ITALIC
     if style == FontStyle.oblique:
@@ -240,7 +243,7 @@ def _style_to_cairo(style: Optional[FontStyle]):
         return cairo.FONT_SLANT_NORMAL
 
 
-def _weight_to_cairo(weight: Optional[FontWeight]):
+def _weight_to_cairo(weight: FontWeight | None):
     if weight is None:
         return cairo.FONT_WEIGHT_NORMAL
     if weight.weight >= 700:
@@ -265,8 +268,8 @@ def _font_extents(font: Font) -> FontExtents:
 
 
 def _traverse_palette(
-    prefix: str, d: Union[Sequence[Union[str, "Palette"]], Mapping[str, Color]]
-) -> Iterator[Tuple[str, Color]]:
+    prefix: str, d: Sequence[str | Palette] | Mapping[str, Color]
+) -> Iterator[tuple[str, Color]]:
     if isinstance(d, Mapping):
         for key, value in d.items():
             yield f"{prefix}.{key}", value
@@ -282,7 +285,7 @@ class Palette:
     def __init__(
         self,
         name: str,
-        colors: Union[Sequence[Union[Color, "Palette"]], Mapping[str, Color]],
+        colors: Sequence[Color | Palette] | Mapping[str, Color],
         default_light: str | None = None,
         default_dark: str | None = None,
         default_gray: str | None = None,
@@ -297,7 +300,7 @@ class Palette:
         self.default_gray = default_gray
         self.color_wheel = color_wheel
 
-    def __getitem__(self, key: Union[str, int]) -> Color:
+    def __getitem__(self, key: str | int) -> Color:
         if isinstance(key, int):
             return self.colors_list[key]
         return self.colors_dict[key]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from enum import Enum
 from typing import Optional
 from dataclasses import dataclass
@@ -44,14 +44,9 @@ class Marker:
         return Canvas(self.elements, self.viewport)
 
     @classmethod
-    def bullet(cls, size: float = 2, **kwargs):
-        if "fill" not in kwargs:
-            if "stroke" in kwargs:
-                kwargs["fill"] = Fill(color=kwargs["stroke"].color)
-            else:
-                kwargs["fill"] = Fill(color=Color(0, 0, 0))
+    def bullet(cls, size: float = 2, styles: Sequence[Style] = ()):
         return cls(
-            [Circle(radius=size / 2, **kwargs)],
+            [Circle(radius=size / 2, styles=styles)],
             viewport=AxisAlignedRectangle((-size, -size), (size, size)),
         )
 

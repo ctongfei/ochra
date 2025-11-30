@@ -1,35 +1,34 @@
 import io
 import xml.etree.ElementTree as ET
 from typing import Literal
+import pytest
 
 from PIL import Image
 import resvg_py
 
 import numpy as np
-import jax.numpy as jnp
 from jaxtyping import Float
 
 import ochra as ox
 import ochra.svg as svg
 
+from .test_common import global_viewport, finite_parametric_test_cases
+
 
 def rasterize(c: ox.Canvas) -> Float[np.ndarray, "h w"]:
     """Rasterizes the canvas to a numpy array using ReSVG."""
-    svg_str = ET.tostring(svg.to_svg(c), encoding='unicode')
+    svg_str = ET.tostring(svg.to_svg_element(c), encoding='unicode')
     png_bytes = resvg_py.svg_to_bytes(svg_string=svg_str)
     img = Image.open(io.BytesIO(png_bytes))
     alpha_channel = np.asarray(img, dtype=np.float32)[:, :, 3] / 255
     return alpha_channel
-
-
-global_viewport = ox.AxisAlignedRectangle((0, 0), (100, 100))
 
 def check_approx(
         e: ox.Parametric,
         approx_method: Literal["polyline", "hermite"] = "hermite",
 ) -> bool:
     """
-    Compares the rasterization of the element and its linear approximation,
+    Compares the rasterization of the element and its linear / cubic approximation,
     and returns True if the PSNR is above 30.
     """
     approximator = {
@@ -50,15 +49,11 @@ def check_approx(
     return psnr > 30  # 30dB is roughly the threshold for human perception
 
 
-def test_line_segment():
-    assert check_approx(ox.LineSegment((1, 1), (99, 99)))
-    assert check_approx(ox.LineSegment((0, 80), (80, 10)))
-    assert check_approx(ox.LineSegment((0, 10), (100, 80)))
-
-def test_circle():
-    assert check_approx(ox.Circle(10, (20, 20)))
-    assert check_approx(ox.Circle(40, (50, 50)))
-
-def test_ellipse():
-    assert check_approx(ox.Ellipse.from_foci_and_major_axis((10, 10), (40, 40), 55))
-
+@pytest.mark.parametrize("approx_method", ["polyline", "hermite"])
+@pytest.mark.parametrize("elem_type", finite_parametric_test_cases.keys())
+def test_rasterization(elem_type: type, approx_method: Literal["polyline", "hermite"]):
+    """
+    Checks that the rasterization of the element and its approximation match.
+    """
+    for e in finite_parametric_test_cases[elem_type]:
+        assert check_approx(e, approx_method), f"Approximation with {approx_method} failed for {e}"

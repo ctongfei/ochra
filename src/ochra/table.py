@@ -1,7 +1,9 @@
+from __future__ import annotations
 from enum import Enum
 from typing import Optional, Union
 import jax.numpy as jnp
 
+from ochra.geometry import Translation
 from ochra.core import AxisAlignedRectangle, Element, Group
 from ochra.style import Color, Fill, Stroke
 
@@ -12,7 +14,7 @@ class HorizontalAlignment(Enum):
     RIGHT = "right"
 
     @classmethod
-    def mk(cls, s: Union["HorizontalAlignment", str]) -> Optional["HorizontalAlignment"]:
+    def mk(cls, s: HorizontalAlignment | str) -> HorizontalAlignment | None:
         return (
             s
             if isinstance(s, HorizontalAlignment)
@@ -33,7 +35,7 @@ class VerticalAlignment(Enum):
     BOTTOM = "bottom"
 
     @classmethod
-    def mk(cls, s: Union["VerticalAlignment", str]) -> Optional["VerticalAlignment"]:
+    def mk(cls, s: VerticalAlignment | str) -> VerticalAlignment | None:
         return (
             s
             if isinstance(s, VerticalAlignment)
@@ -50,7 +52,7 @@ class VerticalAlignment(Enum):
 
 def _displacement(
     inner: AxisAlignedRectangle, outer: AxisAlignedRectangle, ha: HorizontalAlignment, va: VerticalAlignment
-) -> tuple[float, float]:
+) -> Translation:
     dx = {
         HorizontalAlignment.LEFT: outer.bottom_left.x - inner.bottom_left.x,
         HorizontalAlignment.CENTER: outer.visual_center().x - inner.visual_center().x,
@@ -61,10 +63,13 @@ def _displacement(
         VerticalAlignment.CENTER: outer.visual_center().y - inner.visual_center().y,
         VerticalAlignment.BOTTOM: outer.bottom_left.y - inner.bottom_left.y,
     }[va]
-    return dx, dy
+    return Translation((dx, dy))
 
 
 class Table(Group):
+    """
+    Represents a table of elements, laid out in a grid.
+    """
     def __init__(
         self,
         cells: list[list[Element]],
@@ -102,15 +107,15 @@ class Table(Group):
                 AxisAlignedRectangle(
                     (cols_x[j] + cell_horizontal_padding, rows_y[i + 1] + cell_vertical_padding),
                     (cols_x[j + 1] - cell_horizontal_padding, rows_y[i] - cell_vertical_padding),
-                ).set_style(Stroke(Color(0, 0, 1)))
+                )
                 for j in range(self.num_cols)
             ]
             for i in range(self.num_rows)
         ]
         aligned_cells = [
             (
-                cells[i][j].translate(
-                    *_displacement(
+                cells[i][j].transform(
+                    _displacement(
                         cells[i][j].aabb(),
                         boxes[i][j],
                         HorizontalAlignment.mk(col_alignment[j] or HorizontalAlignment.LEFT),

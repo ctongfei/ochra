@@ -5,6 +5,7 @@ from functools import cached_property
 
 from ochra.geometry import Point, PointI, Translation, Rotation, SimilarTransformation
 from ochra.core import (
+    Rectangle,
     AxisAlignedRectangle,
     SimilarInvariant,
     InferredTransformMixin,
@@ -24,14 +25,14 @@ class Text(InferredTransformMixin, SimilarInvariant["Text"]):
         self.extents: TextExtents = _text_extents(self.text, self.font)
 
     @cached_property
-    def rotated_visual_bbox(self) -> "Rectangle":
+    def rotated_visual_bbox(self) -> Rectangle:
         rect = AxisAlignedRectangle(Point.origin, Point.mk((self.extents.x_advance, -self.extents.y_bearing)))
         rect = rect.rotate(self.angle)
         rect = rect.translate(self.bottom_left.x, self.bottom_left.y)
         return rect
 
     @cached_property
-    def _rotated_actual_bbox(self) -> "Rectangle":
+    def _rotated_actual_bbox(self) -> Rectangle:
         rect = (
             AxisAlignedRectangle(
                 Point.mk(self.extents.x_bearing, -self.extents.y_bearing - self.extents.height),
@@ -47,7 +48,7 @@ class Text(InferredTransformMixin, SimilarInvariant["Text"]):
         midpoint = Point.mk(self.extents.x_advance / 2, self.font.extents.x_height / 2)
         return tr(midpoint)
 
-    def visual_bbox(self) -> "AxisAlignedRectangle":
+    def visual_bbox(self) -> AxisAlignedRectangle:
         return self.rotated_visual_bbox.aabb()
 
     @property
@@ -100,7 +101,7 @@ class Text(InferredTransformMixin, SimilarInvariant["Text"]):
             self.text,
             trs(self.bottom_left),
             self.angle + rot.angle,
-            replace(self.font, size=self.font.size * sc.scale),
+            replace(self.font, size=self.font.size * sc.uniform_scale),
         )
 
     def aabb(self) -> AxisAlignedRectangle:

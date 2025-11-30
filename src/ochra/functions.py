@@ -10,17 +10,17 @@ if TYPE_CHECKING:
 
 
 def ui2r(x: Scalar) -> Scalar:
-    r"""A continuous monotonic function that maps $[0, 1] \to (-\infty, +\infty)$."""
+    r"""A continuous monotonic function that maps $[0, 1] \to [-\infty, +\infty]$."""
     return jnp.tan((x - 0.5) * τ / 2)
 
 
 def ui2pr(x: Scalar) -> Scalar:
-    r"""A continuous monotonic function that maps $[0, 1] \to (0, +\infty)$."""
-    return jnp.tan(x * τ / 2)
+    r"""A continuous monotonic function that maps $[0, 1] \to [0, +\infty]$."""
+    return jnp.tan(x * τ / 4)
 
 
 def r2ui(x: Scalar) -> Scalar:
-    r"""$(-\infty, +\infty) \to [0, 1]$"""
+    r"""A continuous function that maps $[-\infty, +\infty] \to [0, 1]$."""
     return 0.5 + jnp.arctan(x) * 2 / τ
 
 
@@ -91,7 +91,6 @@ def aabb_from_points(ps: PointSequenceI) -> "AxisAlignedRectangle":
 def box_union(bboxes: "Iterable[AxisAlignedRectangle]") -> "AxisAlignedRectangle": ...
 @overload
 def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None": ...
-
 
 def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None":
     """Computes the smallest axis-aligned bounding box that contains all the given bounding boxes."""

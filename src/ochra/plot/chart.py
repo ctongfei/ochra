@@ -36,6 +36,7 @@ class Chart(Generic[X, Y]):
         secondary_y_axis: Optional[Axis[Y]] = None,
         secondary_y_plots: Optional[Collection[Plot[X, Y]]] = None,
         extra: Optional[Collection[Element]] = None,
+        *,
         background: Optional[Fill] = None,
         border_stroke: Optional[Stroke] = None,
         grid_stroke: Optional[Stroke] = None,
@@ -44,6 +45,7 @@ class Chart(Generic[X, Y]):
         text_padding: float = 2,
         major_tick_length: float = 5,
         minor_tick_length: float = 3,
+        legend_opacity: float = 0.7,
         palette: Optional[Palette] = None,
     ):
         self.x_size, self.y_size = size
@@ -61,6 +63,7 @@ class Chart(Generic[X, Y]):
         self.tick_stroke = tick_stroke or Stroke(color=palette.default_dark_color)
         self.text_style = font
         self.text_padding = text_padding
+        self.legend_opacity = legend_opacity
 
         self.major_tick_length = major_tick_length
         self.minor_tick_length = minor_tick_length
@@ -233,7 +236,7 @@ class Chart(Generic[X, Y]):
         if len(legends) == 0:
             return Group([])
         background_color = copy.deepcopy(self.background.color)
-        background_color.a = 0.75
+        background_color.a *= self.legend_opacity
         legend = Table(
             legends,
             cell_horizontal_padding=2,

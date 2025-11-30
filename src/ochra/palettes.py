@@ -165,11 +165,18 @@ gruvbox = Palette(
     default_gray=".gray",
     color_wheel=[
         ".red",
+        ".lightred",
         ".orange",
+        ".lightorange",
         ".yellow",
+        ".lightyellow",
         ".green",
+        ".lightgreen",
+        ".lightaqua",
         ".aqua",
+        ".lightblue",
         ".blue",
+        ".lightpurple",
         ".purple",
     ],
 )

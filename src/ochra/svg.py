@@ -1,3 +1,4 @@
+import base64
 import xml.etree.ElementTree as ET
 from typing import Dict, ContextManager
 
@@ -7,6 +8,16 @@ from ochra.core import *  # noqa: F403
 from ochra.style import *  # noqa: F403
 from ochra.mark import Marker, MarkerConfig, Mark
 from ochra.text import Text
+from ochra.image import Image
+
+
+class _ReflectionX(Reflection, Scaling):
+    def __init__(self):
+        Reflection.__init__(self, Line.y_axis)
+        Scaling.__init__(self, (1.0, -1.0))
+
+
+refl_x = _ReflectionX()  # Ochra <-> SVG coordinate system
 
 
 class Session(ContextManager):
@@ -78,159 +89,175 @@ def affine_transformation_to_css(t: AffineTransformation) -> dict[str, str]:
 
 
 def element_to_svg(c: Canvas, e: Element) -> ET.Element:
-    if isinstance(e, Group):
-        g = ET.Element(
-            "g",
-        )
-        g.extend([element_to_svg(c, e) for e in e.elements])
-        return g
-    if isinstance(e, AnyAffinelyTransformed):
-        g = ET.Element(
-            "g",
-            **affine_transformation_to_css(e.transformation),
-        )
-        g.append(element_to_svg(c, e.element))
-        return g
-    elif isinstance(e, EmbeddedCanvas):
-        # TODO: clipping
-        d = e.left_bottom - c.viewport.bottom_left
-        return element_to_svg(c, e.canvas.translate(d.x, d.y))
-    elif isinstance(e, Text):
-        if e.angle != 0.0:
-            return element_to_svg(
-                c,
-                AnyAffinelyTransformed(
-                    Text(e.text, e.bottom_left, angle=0.0, font=e.font),
-                    Rotation.centered(-e.angle, e.bottom_left),
-                ),
+    match e:
+        case Group():
+            g = ET.Element(
+                "g",
             )
-        else:
-            t = ET.Element(
-                "text",
-                x=f2s(e.visual_bbox().bottom_left.x),
-                y=f2s(e.visual_bbox().bottom_left.y),
-                **font_to_css(e.font),
+            g.extend([element_to_svg(c, child) for child in e.elements])
+            return g
+        case AnyAffinelyTransformed():
+            g = ET.Element(
+                "g",
+                **affine_transformation_to_css(e.transformation),
             )
-            t.text = e.text
-            return t
-    elif isinstance(e, Mark):
-        return ET.Element(
-            "use",
-            x=f2s(e.point.x + e.marker.viewport.bottom_left.x),
-            y=f2s(e.point.y + e.marker.viewport.bottom_left.y),
-            href=f"#symbol-{e.marker.name}",
-        )  # conform to SVG 1.1 standard, can't use refX, refY
-    elif isinstance(e, Line):
-        segment = clip_line_aabb(e, c.viewport)
-        if segment is None:
-            return ET.Element("group")
-        else:
-            return element_to_svg(c, segment)
-    elif isinstance(e, LineSegment):
-        return ET.Element(
-            "line",
-            x1=f2s(e.p0.x),
-            y1=f2s(e.p0.y),
-            x2=f2s(e.p1.x),
-            y2=f2s(e.p1.y),
-            **stroke_to_css(e.get_style(Stroke)),
-            **marker_config_to_css(e.get_style(MarkerConfig)),
-        )
-    elif isinstance(e, Polyline):
-        return ET.Element(
-            "polyline",
-            points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.knots),
-            fill="none",
-            **stroke_to_css(e.get_style(Stroke)),
-            **marker_config_to_css(e.get_style(MarkerConfig)),
-        )
-    elif isinstance(e, Polygon):
-        return ET.Element(
-            "polygon",
-            points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.vertices),
-            **stroke_to_css(e.get_style(Stroke)),
-            **fill_to_css(e.get_style(Fill)),
-            **marker_config_to_css(e.get_style(MarkerConfig)),
-        )
-    elif isinstance(e, Circle):
-        return ET.Element(
-            "circle",
-            cx=f2s(e.center.x),
-            cy=f2s(e.center.y),
-            r=f2s(e.radius),
-            **stroke_to_css(e.get_style(Stroke)),
-            **fill_to_css(e.get_style(Fill)),
-        )
-    elif isinstance(e, Ellipse):
-        rot = (
-            {"transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"}
-            if e.angle != 0
-            else {}
-        )
-        return ET.Element(
-            "ellipse",
-            cx=f2s(e.center.x),
-            cy=f2s(e.center.y),
-            rx=f2s(e.a),
-            ry=f2s(e.b),
-            **rot,
-            **stroke_to_css(e.get_style(Stroke)),
-            **fill_to_css(e.get_style(Fill)),
-        )
-    elif isinstance(e, Parabola):
-        segment = clip_parabola_aabb(e, c.viewport)
-        if segment is None:
-            return ET.Element("group")
-        else:
-            return element_to_svg(c, segment)
-    elif isinstance(e, QuadraticBezierCurve):
-        return ET.Element(
-            "path",
-            d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} Q {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}",
-            fill="none",
-            **stroke_to_css(e.get_style(Stroke)),
-        )
-    elif isinstance(e, QuadraticBezierSpline):
-        parts = [
-            f"Q {f2s(e.points[2 * i + 1].x)} {f2s(e.points[2 * i + 1].y)}, {f2s(e.points[2 * i + 2].x)} {f2s(e.points[2 * i + 2].y)}"
-            for i in range(e.num_segments)
-        ]
-        return ET.Element(
-            "path",
-            d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
-            fill="none",
-            **stroke_to_css(e.get_style(Stroke)),
-            **marker_config_to_css(e.get_style(MarkerConfig)),
-        )
-    elif isinstance(e, CubicBezierCurve):
-        return ET.Element(
-            "path",
-            d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} C {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}, {f2s(e.p3.x)} {f2s(e.p3.y)}",
-            fill="none",
-            **stroke_to_css(e.get_style(Stroke)),
-        )
-    elif isinstance(e, CubicBezierSpline):
-        parts = [
-            f"C {f2s(e.points[3 * i + 1].x)} {f2s(e.points[3 * i + 1].y)}, {f2s(e.points[3 * i + 2].x)} {f2s(e.points[3 * i + 2].y)}, {f2s(e.points[3 * i + 3].x)} {f2s(e.points[3 * i + 3].y)}"
-            for i in range(e.num_segments)
-        ]
-        return ET.Element(
-            "path",
-            d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
-            fill="none",
-            **stroke_to_css(e.get_style(Stroke)),
-            **marker_config_to_css(e.get_style(MarkerConfig)),
-        )
-    elif isinstance(e, HermiteCurve):
-        return element_to_svg(c, e.as_cubic_bezier_curve())
-    elif isinstance(e, HermiteSpline):
-        return element_to_svg(c, e.as_cubic_bezier_spline())
-    elif isinstance(e, Parametric):
-        return element_to_svg(c, e.approx_as_hermite_spline())
-    elif isinstance(e, Annotation):  # Materialize under the Ochra coordinate system
-        return element_to_svg(c, e.reflect(Line.x_axis).materialize().reflect(Line.x_axis))
-    else:
-        raise NotImplementedError(f"Unsupported element type: {type(e)}")
+            g.append(element_to_svg(c, e.element))
+            return g
+        case EmbeddedCanvas():
+            # TODO: clipping
+            d = e.left_bottom - c.viewport.bottom_left
+            return element_to_svg(c, e.canvas.translate(d.x, d.y))
+        case Image():
+            return ET.Element(
+                "image",
+                x=f2s(e.bottom_left.x),
+                y=f2s(e.bottom_left.y),
+                width=f2s(e.width),
+                height=f2s(e.height),
+                href=f"data:image/png;base64,{base64.b64encode(e.to_png_bytes()).decode('utf-8')}",
+            )
+        case Text():
+            if not jnp.isclose(e.angle, 0.0):
+                return element_to_svg(
+                    c,
+                    AnyAffinelyTransformed(
+                        Text(e.text, e.bottom_left, angle=0.0, font=e.font),
+                        Rotation.centered(-e.angle, e.bottom_left),
+                    ),
+                )
+            else:
+                t = ET.Element(
+                    "text",
+                    x=f2s(e.visual_bbox().bottom_left.x),
+                    y=f2s(e.visual_bbox().bottom_left.y),
+                    **font_to_css(e.font),
+                )
+                t.text = e.text
+                return t
+        case Mark():
+            return ET.Element(
+                "use",
+                x=f2s(e.point.x + e.marker.viewport.bottom_left.x),
+                y=f2s(e.point.y + e.marker.viewport.bottom_left.y),
+                href=f"#symbol-{e.marker.name}",
+            )  # conform to SVG 1.1 standard, can't use refX, refY
+        case Line():
+            segment = clip_line_aabb(e, c.viewport)
+            if segment is None:
+                return ET.Element("group")
+            else:
+                return element_to_svg(c, segment)
+        case Ray():
+            segment = clip_ray_aabb(e, c.viewport)
+            if segment is None:
+                return ET.Element("group")
+            else:
+                return element_to_svg(c, segment)
+        case LineSegment():
+            return ET.Element(
+                "line",
+                x1=f2s(e.p0.x),
+                y1=f2s(e.p0.y),
+                x2=f2s(e.p1.x),
+                y2=f2s(e.p1.y),
+                **stroke_to_css(e.get_style(Stroke)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case Polyline():
+            return ET.Element(
+                "polyline",
+                points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.knots),
+                fill="none",
+                **stroke_to_css(e.get_style(Stroke)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case Polygon():
+            return ET.Element(
+                "polygon",
+                points=" ".join(f"{f2s(p.x)},{f2s(p.y)}" for p in e.vertices),
+                **stroke_to_css(e.get_style(Stroke)),
+                **fill_to_css(e.get_style(Fill)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case Circle():
+            return ET.Element(
+                "circle",
+                cx=f2s(e.center.x),
+                cy=f2s(e.center.y),
+                r=f2s(e.radius),
+                **stroke_to_css(e.get_style(Stroke)),
+                **fill_to_css(e.get_style(Fill)),
+            )
+        case Ellipse():
+            rot = (
+                {"transform": f"rotate({f2s(rad_to_deg(e.angle))} {f2s(e.center.x)} {f2s(e.center.y)})"}
+                if e.angle != 0
+                else {}
+            )
+            return ET.Element(
+                "ellipse",
+                cx=f2s(e.center.x),
+                cy=f2s(e.center.y),
+                rx=f2s(e._a),
+                ry=f2s(e._b),
+                **rot,
+                **stroke_to_css(e.get_style(Stroke)),
+                **fill_to_css(e.get_style(Fill)),
+            )
+        case Parabola():
+            segment = clip_parabola_aabb(e, c.viewport)
+            if segment is None:
+                return ET.Element("group")
+            else:
+                return element_to_svg(c, segment)
+        case QuadraticBezierCurve():
+            return ET.Element(
+                "path",
+                d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} Q {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}",
+                fill="none",
+                **stroke_to_css(e.get_style(Stroke)),
+            )
+        case QuadraticBezierSpline():
+            parts = [
+                f"Q {f2s(e.points[2 * i + 1].x)} {f2s(e.points[2 * i + 1].y)}, {f2s(e.points[2 * i + 2].x)} {f2s(e.points[2 * i + 2].y)}"
+                for i in range(e.num_segments)
+            ]
+            return ET.Element(
+                "path",
+                d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
+                fill="none",
+                **stroke_to_css(e.get_style(Stroke)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case CubicBezierCurve():
+            return ET.Element(
+                "path",
+                d=f"M {f2s(e.p0.x)} {f2s(e.p0.y)} C {f2s(e.p1.x)} {f2s(e.p1.y)}, {f2s(e.p2.x)} {f2s(e.p2.y)}, {f2s(e.p3.x)} {f2s(e.p3.y)}",
+                fill="none",
+                **stroke_to_css(e.get_style(Stroke)),
+            )
+        case CubicBezierSpline():
+            parts = [
+                f"C {f2s(e.points[3 * i + 1].x)} {f2s(e.points[3 * i + 1].y)}, {f2s(e.points[3 * i + 2].x)} {f2s(e.points[3 * i + 2].y)}, {f2s(e.points[3 * i + 3].x)} {f2s(e.points[3 * i + 3].y)}"
+                for i in range(e.num_segments)
+            ]
+            return ET.Element(
+                "path",
+                d=f"M {f2s(e.points[0].x)} {f2s(e.points[0].y)} {' '.join(parts)}",
+                fill="none",
+                **stroke_to_css(e.get_style(Stroke)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case HermiteCurve():
+            return element_to_svg(c, e.as_cubic_bezier_curve())
+        case HermiteSpline():
+            return element_to_svg(c, e.as_cubic_bezier_spline())
+        case Parametric():
+            return element_to_svg(c, e.approx_as_hermite_spline())
+        case Annotation():  # Materialize under the Ochra coordinate system
+            return element_to_svg(c, e.transform(refl_x).materialize().transform(refl_x))
+        case _:
+            raise NotImplementedError(f"Unsupported element type: {type(e)}")
 
 
 def marker_to_svg_def(c: Canvas, m: Marker) -> ET.Element:
@@ -246,7 +273,7 @@ def marker_to_svg_def(c: Canvas, m: Marker) -> ET.Element:
         refY="0",
         viewBox=f"{v.bottom_left.x} {-v.bottom_left.y - v.height} {v.width} {v.height}",
     )
-    marker.extend([element_to_svg(c, e.scale(1, -1)) for e in m.elements])
+    marker.extend([element_to_svg(c, e.transform(refl_x)) for e in m.elements])
     return marker
 
 
@@ -256,18 +283,20 @@ def marker_to_svg_symbol(c: Canvas, m: Marker) -> ET.Element:
         "symbol", id=f"symbol-{m.name}", viewBox=f"0 0 {v.width} {v.height}", width=str(v.width), height=str(v.height)
     )
     symbol.extend(
-        [element_to_svg(c, e.scale(1, -1).translate(-v.bottom_left.x, -v.bottom_left.y)) for e in m.elements]
+        [element_to_svg(c, e.transform(refl_x).translate(-v.bottom_left.x, -v.bottom_left.y)) for e in m.elements]
     )  # Conform to SVG 1.1 standard, can't use refX, refY -- so have to move the elements
     return symbol
 
 
 def to_svg_coord[E: Element](e: E) -> E:
     if isinstance(e, Text):
-        return Text(e.text, e.bottom_left.scale(1, -1), e.angle, e.font)
+        return Text(e.text, refl_x(e.bottom_left), e.angle, e.font)
+    elif isinstance(e, Image):
+        return Image(e.image, refl_x(e.aabb().top_left))
     elif isinstance(e, Group):
         return Group([to_svg_coord(e) for e in e.elements])
     else:
-        return e.scale(1, -1)
+        return e.transform(refl_x)
 
 
 def materialize[E: Element](e: E) -> E:
@@ -281,7 +310,7 @@ def materialize[E: Element](e: E) -> E:
         return e
 
 
-def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float = 0.0) -> ET.Element:
+def to_svg_element(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float = 0.0) -> ET.Element:
     hp, vp = horizontal_padding, vertical_padding
     # Materialize annotations
     c = materialize(c)
@@ -306,8 +335,17 @@ def to_svg(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float =
     return root
 
 
+def to_svg_str(c: Canvas, horizontal_padding: float = 0.0, vertical_padding: float = 0.0) -> str:
+    """Converts the canvas to an SVG string."""
+    e = to_svg_element(c, horizontal_padding, vertical_padding)
+    tree = ET.ElementTree(e)
+    ET.indent(tree)
+    return ET.tostring(e, encoding="unicode")
+
+
 def save_svg(c: Canvas, path: str, horizontal_padding: float = 0.0, vertical_padding: float = 0.0):
-    e = to_svg(c, horizontal_padding, vertical_padding)
+    """Saves the canvas to an SVG file."""
+    e = to_svg_element(c, horizontal_padding, vertical_padding)
     tree = ET.ElementTree(e)
     ET.indent(tree)
     tree.write(path, encoding="utf-8")
