@@ -1035,16 +1035,42 @@ class Conic(InferredTransformMixin, Implicit, ProjectiveInvariant["Conic"]):
         """
         return self.proj_matrix[:2, :2]
 
-    @cached_property
-    def _transformation_from_unit_circle(self) -> Float[jax.Array, "3 3"]:
-        """
-        Returns a projective transformation that transforms the unit circle $x^2 + y^2 = 1$ to this conic.
-        """
-        pass
-
     @property
     def eccentricity(self):
         return jnp.sqrt(1.0 + self._aff_matrix[0, 1] ** 2 / (self._aff_matrix[0, 0] * self._aff_matrix[1, 1])).item()
+
+    @property
+    def semi_latus_rectum(self) -> Scalar:
+        """
+        The semi-latus rectum p, the distance from a focus to the curve
+        measured perpendicular to the major/transverse axis.
+        Must be implemented by subclasses.
+        """
+        raise NotImplementedError("Subclasses must implement semi_latus_rectum")
+
+    @property
+    def polar_focus(self) -> Point:
+        """The focus used as the origin for polar parameterization."""
+        raise NotImplementedError("Subclasses must implement polar_focus")
+
+    @property
+    def polar_angle(self) -> Scalar:
+        """The angle direction for θ = 0 in polar parameterization (toward periapsis)."""
+        raise NotImplementedError("Subclasses must implement polar_angle")
+
+    def at(self, t: Scalar) -> Point:
+        """
+        Uniform polar parameterization: r = p / (1 + e·cos(θ))
+        with θ = (2t - 1)·τ/2 mapping [0, 1] → [-τ/2, τ/2].
+        t = 0.5 corresponds to the vertex (periapsis).
+        """
+        θ = (2 * t - 1) * τ / 2
+        e = self.eccentricity
+        p = self.semi_latus_rectum
+        r = p / (1 + e * jnp.cos(θ))
+        φ = self.polar_angle
+        d = Vector.unit(φ + θ) * r
+        return self.polar_focus + d
 
     def implicit_func(self, p: Point) -> Float[jax.Array, ""]:
         pp = jnp.array([p.x, p.y, 1.0])
@@ -1093,8 +1119,7 @@ class Conic(InferredTransformMixin, Implicit, ProjectiveInvariant["Conic"]):
             if jnp.isclose(d2, 0.0):
                 return Parabola(coef, styles=styles)
             elif d2 < 0.0:
-                # hyperbola
-                raise NotImplementedError
+                return Hyperbola(coef, styles=styles)
             else:
                 return Ellipse(coef, styles=styles)
 
@@ -1188,6 +1213,11 @@ class Ellipse(Conic, Parametric, AffineInvariant["Ellipse"]):
         return self._c / self._a
 
     @property
+    def semi_latus_rectum(self) -> Scalar:
+        """The semi-latus rectum p = b²/a."""
+        return self._b ** 2 / self._a
+
+    @property
     def vertex0(self) -> Point:
         return self.center + (-Vector.unit(self.angle) * self._a)
 
@@ -1238,12 +1268,13 @@ class Ellipse(Conic, Parametric, AffineInvariant["Ellipse"]):
     def __str__(self):
         return f"Ellipse(F₀ = {self.focus0}, F₁ = {self.focus1}, a = {self._a}, θ = {self.angle})"
 
-    def at(self, t: Scalar):
-        θ = t * τ  # [0, 1] -> [0, τ]
-        φ = self.angle
-        x = self.center.x + self._a * jnp.cos(θ) * jnp.cos(φ) - self._b * jnp.sin(θ) * jnp.sin(φ)
-        y = self.center.y + self._b * jnp.sin(θ) * jnp.cos(φ) + self._a * jnp.cos(θ) * jnp.sin(φ)
-        return Point(jnp.array([x, y]))
+    @property
+    def polar_focus(self) -> Point:
+        return self.focus1
+
+    @property
+    def polar_angle(self) -> Scalar:
+        return self.angle
 
     def _aff_transform(self: Ellipse, f: AffineTransformation) -> Ellipse:
         t = f.inverse().matrix
@@ -1304,8 +1335,187 @@ class Arc(Parametric):
         return self.ellipse.at(lerp(self.start, self.end, t))
 
 
-class Hyperbola(Conic, Parametric):
-    pass
+class Hyperbola(Conic, Parametric, AffineInvariant["Hyperbola"]):
+    """
+    Represents a hyperbola in the plane.
+    """
+
+    def __init__(self, coef: ConicI, styles: Sequence[Style] = ()):
+        super().__init__(coef, styles=styles)
+        assert self.proj_matrix.shape == (3, 3)
+        assert jnp.linalg.det(self.proj_matrix) != 0.0
+        d = jnp.linalg.det(self._aff_matrix)
+        assert d < 0.0, "This is not a hyperbola."
+
+        # Find center
+        self.center = Point.mk(-jnp.linalg.inv(self._aff_matrix) @ self.proj_matrix[:2, 2])
+
+        # Eigendecomposition of A_2x2
+        eigvals, eigvecs = jnp.linalg.eigh(self._aff_matrix)
+        eigvals = jnp.real(eigvals)
+        eigvecs = jnp.real(eigvecs)
+
+        # Identify positive and negative eigenvalues
+        if eigvals[0] > eigvals[1]:
+            λ_pos, λ_neg = eigvals[0], eigvals[1]
+            v_pos, v_neg = eigvecs[:, 0], eigvecs[:, 1]
+        else:
+            λ_pos, λ_neg = eigvals[1], eigvals[0]
+            v_pos, v_neg = eigvecs[:, 1], eigvecs[:, 0]
+
+        # Compute k = f(center)
+        center_proj = jnp.array([self.center.x, self.center.y, 1.0])
+        k = center_proj @ self.proj_matrix @ center_proj
+
+        # Determine transverse axis direction based on sign of k
+        # If k < 0: transverse axis along positive eigenvalue direction
+        # If k > 0: transverse axis along negative eigenvalue direction
+        if k < 0:
+            self._a = jnp.sqrt(jnp.abs(k) / jnp.abs(λ_pos))
+            self._b = jnp.sqrt(jnp.abs(k) / jnp.abs(λ_neg))
+            self.angle = jnp.atan2(v_pos[1], v_pos[0])
+        else:
+            self._a = jnp.sqrt(jnp.abs(k) / jnp.abs(λ_neg))
+            self._b = jnp.sqrt(jnp.abs(k) / jnp.abs(λ_pos))
+            self.angle = jnp.atan2(v_neg[1], v_neg[0])
+
+        # Linear eccentricity: c² = a² + b² for hyperbola
+        self._c = jnp.sqrt(self._a**2 + self._b**2)
+
+        # Foci are at distance c from center along transverse axis
+        self.focus0: Point = self.center + (-Vector.unit(self.angle) * self._c)
+        self.focus1: Point = self.center + Vector.unit(self.angle) * self._c
+
+    @classmethod
+    def from_foci_and_transverse_axis(
+        cls, focus0: PointI, focus1: PointI, transverse_axis: Scalar, styles: Sequence[Style] = ()
+    ):
+        """
+        Defines a hyperbola from its definition:
+        the locus of points whose absolute difference of distances to two foci equals the transverse axis.
+        """
+        focus0 = Point.mk(focus0)
+        focus1 = Point.mk(focus1)
+        center = lerp_point(focus0, focus1, 0.5)
+        a = transverse_axis / 2
+        c = dist(focus0, focus1) / 2
+        b = jnp.sqrt(c**2 - a**2)
+        θ = jnp.atan2(focus1.y - focus0.y, focus1.x - focus0.x)
+        # Standard form matrix for x²/a² - y²/b² = 1 → b²x² - a²y² - a²b² = 0
+        m0 = jnp.array(
+            [
+                [b * b, 0, 0],
+                [0, -a * a, 0],
+                [0, 0, -a * a * b * b],
+            ]
+        )
+        t = (Translation(center.loc) @ Rotation(θ)).inverse().matrix
+        m = t.T @ m0 @ t
+        return cls(m, styles=styles)
+
+    @property
+    def semi_transverse_axis(self):
+        return self._a
+
+    @property
+    def semi_conjugate_axis(self):
+        return self._b
+
+    @property
+    def linear_eccentricity(self):
+        """
+        The distance between the center and a focus.
+        """
+        return self._c
+
+    @property
+    def eccentricity(self):
+        return self._c / self._a
+
+    @property
+    def semi_latus_rectum(self) -> Scalar:
+        """The semi-latus rectum p = b²/a."""
+        return self._b ** 2 / self._a
+
+    @property
+    def vertex0(self) -> Point:
+        return self.center + (-Vector.unit(self.angle) * self._a)
+
+    @property
+    def vertex1(self) -> Point:
+        return self.center + Vector.unit(self.angle) * self._a
+
+    def foci(self) -> list[Point]:
+        return [self.focus0, self.focus1]
+
+    def directrix0(self) -> Line:
+        """Returns the directrix closer to vertex0."""
+        d = self._a * self._a / self._c
+        d_point = self.center + (-Vector.unit(self.angle) * d)
+        perpendicular = self.center + Vector.unit(self.angle + τ / 4)
+        return Line.from_two_points(d_point, d_point + (perpendicular - self.center))
+
+    def directrix1(self) -> Line:
+        """Returns the directrix closer to vertex1."""
+        d = self._a * self._a / self._c
+        d_point = self.center + Vector.unit(self.angle) * d
+        perpendicular = self.center + Vector.unit(self.angle + τ / 4)
+        return Line.from_two_points(d_point, d_point + (perpendicular - self.center))
+
+    def directrices(self) -> list[Line]:
+        return [self.directrix0(), self.directrix1()]
+
+    def asymptote0(self) -> Line:
+        """Returns one of the two asymptotes."""
+        # Asymptote direction: angle ± arctan(b/a)
+        asymptote_angle = self.angle + jnp.arctan2(self._b, self._a)
+        p1 = self.center + Vector.unit(asymptote_angle)
+        return Line.from_two_points(self.center, p1)
+
+    def asymptote1(self) -> Line:
+        """Returns the other asymptote."""
+        asymptote_angle = self.angle - jnp.arctan2(self._b, self._a)
+        p1 = self.center + Vector.unit(asymptote_angle)
+        return Line.from_two_points(self.center, p1)
+
+    def asymptotes(self) -> list[Line]:
+        return [self.asymptote0(), self.asymptote1()]
+
+    @property
+    def polar_focus(self) -> Point:
+        return self.focus1
+
+    @property
+    def polar_angle(self) -> Scalar:
+        return self.angle
+
+    @property
+    def pieces(self) -> Sequence[tuple[float, float]]:
+        """
+        Three pieces avoiding asymptotes at θ = ±arccos(-1/e).
+        With θ = (2t-1)·τ/2, asymptotes are at t = 0.5 ± arccos(-1/e)/τ.
+        """
+        θ_asymptote = float(jnp.arccos(-1 / self.eccentricity))
+        t_asymptote = 0.5 * (1 + θ_asymptote / (τ / 2))
+        # Asymptotes at t = 1 - t_asymptote and t = t_asymptote
+        return [(0.0, 1 - t_asymptote), (1 - t_asymptote, t_asymptote), (t_asymptote, 1.0)]
+
+    def _aff_transform(self: "Hyperbola", f: AffineTransformation) -> "Hyperbola":
+        t = f.inverse().matrix
+        return Hyperbola(t.T @ self.proj_matrix @ t, styles=self.styles)
+
+    def __contains__(self, p: PointI) -> bool:
+        p = Point.mk(p)
+        return jnp.isclose(jnp.abs(dist(self.focus0, p) - dist(self.focus1, p)), self._a * 2, atol=Global.approx_eps)
+
+    def __str__(self):
+        return f"Hyperbola(F₀ = {self.focus0}, F₁ = {self.focus1}, a = {self._a}, b = {self._b}, θ = {self.angle})"
+
+    @classmethod
+    def standard(cls, a: float, b: float, **kwargs):
+        """Creates the standard hyperbola x²/a² - y²/b² = 1 centered at origin."""
+        # Matrix form: b²x² - a²y² - a²b² = 0
+        return cls((b * b, 0, -a * a, 0, 0, -a * a * b * b), **kwargs)
 
 
 class Parabola(Conic, Parametric, AffineInvariant["Parabola"]):
@@ -1364,6 +1574,15 @@ class Parabola(Conic, Parametric, AffineInvariant["Parabola"]):
     def semi_latus_rectum(self) -> Scalar:
         return 0.5 * (self.scale_factor**2)
 
+    @property
+    def polar_focus(self) -> Point:
+        return self.focus
+
+    @property
+    def polar_angle(self) -> Scalar:
+        # From focus, periapsis (vertex) is in direction angle + τ/2
+        return self.angle + τ / 2
+
     def slice(self, t0: Scalar, t1: Scalar, **kwargs) -> QuadraticBezierCurve:
         p0 = self.at(t0)
         p1 = self.at(t1)
@@ -1378,13 +1597,6 @@ class Parabola(Conic, Parametric, AffineInvariant["Parabola"]):
 
     def directrix(self) -> Line:
         return self._directrix
-
-    def at(self, t: Scalar) -> Point:
-        t = (t - 0.5) * τ / 2  # maps (0, 1) to (-τ/4, τ/4)
-        s = jnp.tan(t)  # (-∞, +∞)
-        p = jnp.array([s * s, s, 1])
-        pp = self._aff_trans.matrix @ p
-        return Point(pp[:2] / pp[2])
 
     def _aff_transform(self: Parabola, f: AffineTransformation) -> Parabola:
         t = f.inverse().matrix
