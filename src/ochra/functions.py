@@ -1,3 +1,4 @@
+from __future__ import annotations
 from typing import Any, Iterable, TYPE_CHECKING, overload
 import jax.numpy as jnp
 import jax
@@ -75,7 +76,7 @@ def solve_quadratic(a: Scalar, b: Scalar, c: Scalar) -> list[Scalar]:
         return [(-b - sqrt_d) / (2 * a), (-b + sqrt_d) / (2 * a)]
 
 
-def aabb_from_points(ps: PointSequenceI) -> "AxisAlignedRectangle":
+def aabb_from_points(ps: PointSequenceI) -> AxisAlignedRectangle:
     """Computes the smallest axis-aligned bounding box that contains all the given points."""
     from ochra.core import AxisAlignedRectangle
 
@@ -88,11 +89,11 @@ def aabb_from_points(ps: PointSequenceI) -> "AxisAlignedRectangle":
 
 
 @overload
-def box_union(bboxes: "Iterable[AxisAlignedRectangle]") -> "AxisAlignedRectangle": ...
+def box_union(bboxes: Iterable[AxisAlignedRectangle]) -> AxisAlignedRectangle: ...
 @overload
-def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None": ...
+def box_union(bboxes: Iterable[AxisAlignedRectangle | None]) -> AxisAlignedRectangle | None: ...
 
-def box_union(bboxes: "Iterable[AxisAlignedRectangle | None]") -> "AxisAlignedRectangle | None":
+def box_union(bboxes: Iterable[AxisAlignedRectangle | None]) -> AxisAlignedRectangle | None:
     """Computes the smallest axis-aligned bounding box that contains all the given bounding boxes."""
     from ochra.core import AxisAlignedRectangle
     bboxes = [bbox for bbox in bboxes if bbox is not None]

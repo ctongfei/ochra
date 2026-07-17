@@ -1506,7 +1506,7 @@ class Hyperbola(Conic, Parametric, AffineInvariant["Hyperbola"]):
 
     def __contains__(self, p: PointI) -> bool:
         p = Point.mk(p)
-        return jnp.isclose(jnp.abs(dist(self.focus0, p) - dist(self.focus1, p)), self._a * 2, atol=Global.approx_eps)
+        return jnp.allclose(jnp.abs(dist(self.focus0, p) - dist(self.focus1, p)), self._a * 2, atol=Global.approx_eps).all().item()
 
     def __str__(self):
         return f"Hyperbola(F₀ = {self.focus0}, F₁ = {self.focus1}, a = {self._a}, b = {self._b}, θ = {self.angle})"
