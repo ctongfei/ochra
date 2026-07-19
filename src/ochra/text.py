@@ -7,13 +7,13 @@ from ochra.geometry import Point, PointI, Translation, Rotation, SimilarTransfor
 from ochra.core import (
     Rectangle,
     AxisAlignedRectangle,
-    SimilarInvariant,
+    ClosedUnderSimilarTransformations,
     InferredTransformMixin,
 )
 from ochra.style import Font, TextExtents, _text_extents
 
 
-class Text(InferredTransformMixin, SimilarInvariant["Text"]):
+class Text(InferredTransformMixin, ClosedUnderSimilarTransformations["Text"]):
     """
     Represents a text element.
     """

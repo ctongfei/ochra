@@ -36,13 +36,20 @@ from .core import (
     QuadraticBezierSpline,
     CubicBezierCurve,
     CubicBezierSpline,
+    Sliceable,
+    PiecewiseParametric,
+    SplineSlice,
+    Contour,
+    ClosedSpline,
+    Region,
     HermiteCurve,
     HermiteSpline,
     Canvas,
     EmbeddedCanvas,
+    intersect_segment_segment,
 )
 from .mark import Mark, Marker, MarkerOrientation, MarkerUnits, MarkerConfig
-from .style import Color, Stroke, Fill, Font
+from .style import Color, Stroke, Fill, FillRule, Font
 from .text import Text
 from .table import Table
 from .util import Global
@@ -85,10 +92,17 @@ __all__ = [
     "QuadraticBezierSpline",
     "CubicBezierCurve",
     "CubicBezierSpline",
+    "Sliceable",
+    "PiecewiseParametric",
+    "SplineSlice",
+    "Contour",
+    "ClosedSpline",
+    "Region",
     "HermiteCurve",
     "HermiteSpline",
     "Canvas",
     "EmbeddedCanvas",
+    "intersect_segment_segment",
     "Mark",
     "Marker",
     "MarkerOrientation",
@@ -97,6 +111,7 @@ __all__ = [
     "Color",
     "Stroke",
     "Fill",
+    "FillRule",
     "Font",
     "Text",
     "Table",

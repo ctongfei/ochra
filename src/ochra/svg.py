@@ -88,6 +88,37 @@ def affine_transformation_to_css(t: AffineTransformation) -> dict[str, str]:
     return {"transform": f"matrix({s})"}
 
 
+def contour_to_svg_path_data(contour: Contour) -> str:
+    """Lowers exactly representable contour segments to SVG path data."""
+    start = contour.segments[0].at(0)
+    commands = [f"M {f2s(start.x)} {f2s(start.y)}"]
+
+    def append_segment(segment: Parametric):
+        if isinstance(segment, LineSegment):
+            commands.append(f"L {f2s(segment.p1.x)} {f2s(segment.p1.y)}")
+        elif isinstance(segment, QuadraticBezierCurve):
+            commands.append(
+                f"Q {f2s(segment.p1.x)} {f2s(segment.p1.y)} {f2s(segment.p2.x)} {f2s(segment.p2.y)}"
+            )
+        elif isinstance(segment, CubicBezierCurve):
+            commands.append(
+                f"C {f2s(segment.p1.x)} {f2s(segment.p1.y)} {f2s(segment.p2.x)} {f2s(segment.p2.y)} "
+                f"{f2s(segment.p3.x)} {f2s(segment.p3.y)}"
+            )
+        elif isinstance(segment, HermiteCurve):
+            append_segment(segment.as_cubic_bezier_curve())
+        elif isinstance(segment, Polyline | QuadraticBezierSpline | CubicBezierSpline | HermiteSpline):
+            for child in segment.segments:
+                append_segment(child)
+        else:
+            raise NotImplementedError(f"Exact SVG contour lowering is not implemented for {type(segment)}.")
+
+    for segment in contour.segments:
+        append_segment(segment)
+    commands.append("Z")
+    return " ".join(commands)
+
+
 def element_to_svg(c: Canvas, e: Element) -> ET.Element:
     match e:
         case Group():
@@ -161,6 +192,24 @@ def element_to_svg(c: Canvas, e: Element) -> ET.Element:
                 x2=f2s(e.p1.x),
                 y2=f2s(e.p1.y),
                 **stroke_to_css(e.get_style(Stroke)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case Contour():
+            return ET.Element(
+                "path",
+                d=contour_to_svg_path_data(e),
+                fill="none",
+                **stroke_to_css(e.get_style(Stroke)),
+                **marker_config_to_css(e.get_style(MarkerConfig)),
+            )
+        case Region():
+            css = fill_to_css(e.get_style(Fill))
+            css["fill-rule"] = e.fill_rule.value
+            return ET.Element(
+                "path",
+                d=" ".join(contour_to_svg_path_data(contour) for contour in e.contours),
+                **stroke_to_css(e.get_style(Stroke)),
+                **css,
                 **marker_config_to_css(e.get_style(MarkerConfig)),
             )
         case Polyline():
